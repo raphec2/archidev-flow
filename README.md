@@ -36,7 +36,17 @@ If `npm install` fails with `ModuleNotFoundError: No module named 'distutils'` u
 npm run package
 ```
 
-Artifacts land in `release/`.
+Artifacts land in `release/`. Linux emits an `.AppImage`, macOS a `.dmg` + `.zip`, Windows an `nsis` installer. Native modules (`node-pty`) are emitted outside the ASAR archive via `asarUnpack` so they load correctly at runtime. `npmRebuild` is disabled in the electron-builder config — the postinstall has already rebuilt `node-pty` against the correct Electron ABI, and electron-builder's own rebuild path hangs in some Linux environments.
+
+## Downloads
+
+Prebuilt installers for Linux (`.AppImage`), macOS (`.dmg`), and Windows (`.exe`) are attached to GitHub Releases. To cut a new release:
+
+```bash
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+GitHub Actions (`.github/workflows/release.yml`) spins up one runner per platform, runs `npm ci && npm run package`, and drafts a release with the three artifacts attached. Builds are unsigned — macOS users see "unidentified developer" and Windows shows SmartScreen warnings.
 
 ## Config
 
