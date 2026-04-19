@@ -24,7 +24,9 @@ npm install
 npm run dev
 ```
 
-The first run rebuilds `node-pty` for Electron's Node ABI via `electron-builder install-app-deps` (postinstall hook).
+The postinstall hook (`scripts/rebuild-native.js`) rebuilds `node-pty` against the installed Electron's ABI. It invokes `node-gyp` directly — fetching Electron headers to `~/.electron-gyp/<version>/` on first run — instead of `electron-builder install-app-deps`, which transitively uses `@electron/rebuild` and has been observed to hang on Linux.
+
+If `npm install` fails with `ModuleNotFoundError: No module named 'distutils'` under Python 3.12+, delete `node_modules` and `package-lock.json` and reinstall — the `overrides` block in `package.json` pins `node-gyp` to 10.x, which drops the `distutils` import. To skip the native rebuild entirely (e.g. on CI that doesn't run Electron), set `ARCHIDEV_SKIP_NATIVE_REBUILD=1`.
 
 ## Build a distributable
 

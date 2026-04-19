@@ -13,7 +13,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "package": "electron-vite build && electron-builder",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "node scripts/rebuild-native.js"
   },
   "dependencies": {
     "@codemirror/commands": "^6.6.0",
@@ -40,6 +40,9 @@
     "node-gyp": "^10.3.1",
     "typescript": "^5.5.3",
     "vite": "^5.3.4"
+  },
+  "overrides": {
+    "node-gyp": "^10.3.1"
   },
   "build": {
     "appId": "dev.archidev.flow",
