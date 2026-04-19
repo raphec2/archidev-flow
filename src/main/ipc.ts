@@ -3,6 +3,7 @@ import { loadOrCreateConfig, saveConfig } from './config'
 import { openPty, writePty, resizePty, closePty } from './pty'
 import { listDir, readFile, writeFile } from './fsops'
 import { runGitSync } from './git'
+import { detectTools } from './detect'
 import type { Config } from '../shared/config'
 
 export function registerIpc(win: BrowserWindow, projectRoot: string): void {
@@ -51,4 +52,6 @@ export function registerIpc(win: BrowserWindow, projectRoot: string): void {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })
+
+  ipcMain.handle('tool:detect', () => detectTools())
 }

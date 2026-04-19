@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Config, DirEntry } from '../shared/config'
+import type { Config, DirEntry, DetectedTools } from '../shared/config'
 
 type PtyOpenArgs = { id: string; cwd: string; command: string; cols: number; rows: number }
 type PtyExitInfo = { exitCode: number; signal?: number }
@@ -53,6 +53,9 @@ const api = {
   },
   dialog: {
     pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:pickDirectory')
+  },
+  tool: {
+    detect: (): Promise<DetectedTools> => ipcRenderer.invoke('tool:detect')
   }
 }
 

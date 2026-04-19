@@ -41,7 +41,8 @@ export function defaultConfig(projectRoot: string): Config {
       { id: 'file', name: 'File', filePath: null, isNotes: false }
     ],
     notesPath: getDefaultNotesPath(),
-    lastOpenedFiles: []
+    lastOpenedFiles: [],
+    onboardingComplete: false
   }
 }
 

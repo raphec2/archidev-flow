@@ -29,4 +29,10 @@ export type Config = {
   editors: EditorPane[]
   notesPath: string
   lastOpenedFiles: string[]
+  onboardingComplete: boolean
+}
+
+export type DetectedTools = {
+  claude?: string
+  codex?: string
 }

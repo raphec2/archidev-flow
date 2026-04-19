@@ -51,12 +51,22 @@ export function openPty(opts: {
   sessions.set(opts.id, { id: opts.id, pty: ptyProc })
 
   ptyProc.onData((data) => {
+    // If we've been replaced (StrictMode double-mount), drop the output so
+    // it doesn't bleed into the live terminal.
+    if (sessions.get(opts.id)?.pty !== ptyProc) return
     if (!opts.window.isDestroyed()) {
       opts.window.webContents.send('pty:data', opts.id, data)
     }
   })
 
   ptyProc.onExit(({ exitCode, signal }) => {
+    // Only forward the exit (and clear the slot) if we're still the
+    // registered session for this id. StrictMode's setup → cleanup → setup
+    // runs kill() on PTY A after PTY B has already taken the slot; PTY A's
+    // async onExit would otherwise evict B from the map, causing silent
+    // writePty no-ops and a spurious "process exited" banner.
+    const current = sessions.get(opts.id)
+    if (current?.pty !== ptyProc) return
     if (!opts.window.isDestroyed()) {
       opts.window.webContents.send('pty:exit', opts.id, { exitCode, signal })
     }

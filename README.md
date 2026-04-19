@@ -2,12 +2,14 @@
 
 Local desktop workspace for a dual-AI CLI workflow.
 
-- **Left pane**: architect/consultant terminal (default: your shell — point it at Codex/Aider/etc. via config)
-- **Right pane**: developer terminal (default: your shell — point it at Claude/etc.)
-- Bottom: Notes + file editor (CodeMirror 6)
+- **Left pane**: architect/consultant terminal (point it at Codex/Claude/Aider/etc.)
+- **Right pane**: developer terminal (point it at a different tool — or the same one in a different role)
+- Bottom: Notes + file editor (CodeMirror 6) with native right-click context menu (Cut/Copy/Paste/Select All)
 - Built-in file explorers and a one-click `git add && commit && push` flow
 
-Local-only. No cloud, no auth, no telemetry.
+On first launch a short wizard detects `claude` and `codex` on your `PATH`, lets you pick one per pane (or enter a custom command), and lets you pick the consultant's working directory. The developer pane always runs from the directory you launched the app from.
+
+Local-only. No cloud, no auth, no telemetry. Electron's default File/Edit/View menu is hidden — everything lives in-app.
 
 ## Prerequisites
 
@@ -38,13 +40,15 @@ Artifacts land in `release/`.
 
 ## Config
 
-On first launch, `config.json` is written to Electron's `userData` dir:
+On first launch, `config.json` is written to Electron's `userData` dir. The directory uses the app's `productName` when packaged and the lowercase `name` from `package.json` in `npm run dev`:
 
-- macOS: `~/Library/Application Support/ArchiDev-Flow/config.json`
-- Linux: `~/.config/ArchiDev-Flow/config.json`
-- Windows: `%APPDATA%/ArchiDev-Flow/config.json`
+| Platform | Packaged | Dev (`npm run dev`) |
+|---|---|---|
+| macOS | `~/Library/Application Support/ArchiDev-Flow/config.json` | `~/Library/Application Support/archidev-flow/config.json` |
+| Linux | `~/.config/ArchiDev-Flow/config.json` | `~/.config/archidev-flow/config.json` |
+| Windows | `%APPDATA%/ArchiDev-Flow/config.json` | `%APPDATA%/archidev-flow/config.json` |
 
-Edit it with any text editor. Fields:
+Edit with any text editor (or re-run the onboarding wizard by setting `"onboardingComplete": false` and relaunching). Fields:
 
 ```json
 {
@@ -56,7 +60,8 @@ Edit it with any text editor. Fields:
   "consultantExplorerVisible": false,
   "editors": [{ "id": "notes", "name": "Notes", "filePath": null, "isNotes": true }, ...],
   "notesPath": "/abs/path/to/notes.md",
-  "lastOpenedFiles": []
+  "lastOpenedFiles": [],
+  "onboardingComplete": true
 }
 ```
 

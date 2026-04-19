@@ -5,6 +5,7 @@ import { TerminalPane } from './components/TerminalPane'
 import { FileTree } from './components/FileTree'
 import { EditorPane } from './components/EditorPane'
 import { GitSyncDialog } from './components/GitSyncDialog'
+import { OnboardingDialog } from './components/OnboardingDialog'
 
 function HSplitHandle(): JSX.Element {
   return <PanelResizeHandle className="hsplit-handle" />
@@ -16,6 +17,7 @@ function VSplitHandle(): JSX.Element {
 export default function App(): JSX.Element {
   const config = useStore((s) => s.config)
   const setConfig = useStore((s) => s.setConfig)
+  const patchConfig = useStore((s) => s.patchConfig)
   const setProjectRoot = useStore((s) => s.setProjectRoot)
   const projectRoot = useStore((s) => s.projectRoot)
   const setLayout = useStore((s) => s.setLayout)
@@ -51,6 +53,29 @@ export default function App(): JSX.Element {
           <div className="title">ArchiDev-Flow</div>
         </div>
         <div style={{ padding: 16, color: 'var(--text-2)' }}>Loading…</div>
+      </div>
+    )
+  }
+
+  if (!config.onboardingComplete) {
+    return (
+      <div className="app">
+        <div className="app-header">
+          <div className="title">ArchiDev-Flow</div>
+        </div>
+        <OnboardingDialog
+          projectRoot={projectRoot || config.developer_dir}
+          initialConsultantDir={config.consultant_dir || projectRoot}
+          onComplete={({ consultant_tool, developer_tool, consultant_dir }) => {
+            patchConfig({
+              consultant_tool,
+              developer_tool,
+              consultant_dir,
+              developer_dir: projectRoot || config.developer_dir,
+              onboardingComplete: true
+            })
+          }}
+        />
       </div>
     )
   }
