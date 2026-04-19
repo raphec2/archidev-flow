@@ -105,6 +105,23 @@ export function TerminalPane({
     termRef.current?.focus()
   }
 
+  function restart(): void {
+    const term = termRef.current
+    if (!term) return
+    setExitInfo(null)
+    term.reset()
+    // openPty closes any existing session for this id first, so we don't
+    // need a separate close call.
+    window.api.pty.open({
+      id,
+      cwd,
+      command,
+      cols: term.cols,
+      rows: term.rows
+    })
+    term.focus()
+  }
+
   function pasteIntoTerminal(text: string): void {
     if (!text) return
     window.api.pty.write(id, text)
@@ -134,6 +151,7 @@ export function TerminalPane({
         <div className="toolbar">
           <button onClick={onSendToOther} title="Paste selection into other terminal (no Enter)">→ terminal</button>
           <button onClick={onSendToNotes} title="Append selection to Notes">→ notes</button>
+          <button onClick={restart} title="Kill the current process and rerun the configured tool">↻ restart</button>
           {trailingTool}
         </div>
       </div>
