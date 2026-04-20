@@ -23,6 +23,7 @@ export default function App(): JSX.Element {
   const projectRoot = useStore((s) => s.projectRoot)
   const setLayout = useStore((s) => s.setLayout)
   const setConsultantExplorerVisible = useStore((s) => s.setConsultantExplorerVisible)
+  const setDeveloperExplorerVisible = useStore((s) => s.setDeveloperExplorerVisible)
   const setEditorPane = useStore((s) => s.setEditorPane)
   const consultantSelection = useStore((s) => s.consultantSelection)
   const developerSelection = useStore((s) => s.developerSelection)
@@ -47,15 +48,19 @@ export default function App(): JSX.Element {
     return cb
   }
 
-  function confirmDiscardIfDirty(paneId: string, action: string): boolean {
+  // Three-way dirty prompt: Save / Don't Save / Cancel.
+  // Returns true if the caller should proceed with the action, false if the
+  // user cancelled (or Save failed — in which case we keep the pane open so
+  // nothing is silently discarded).
+  async function promptDirtyBeforeAction(paneId: string, action: string): Promise<boolean> {
     const h = editorRefs.current.get(paneId)
     if (!h || !h.isDirty()) return true
     const label = h.displayName() || paneId
-    const msg =
-      `"${label}" has unsaved changes.\n\n` +
-      `Click OK to discard them and ${action}.\n` +
-      `Click Cancel to go back (use Save first to keep them).`
-    return window.confirm(msg)
+    const choice = await window.api.dialog.confirmUnsaved({ name: label, action })
+    if (choice === 'cancel') return false
+    if (choice === 'discard') return true
+    const r = await h.save()
+    return r.ok
   }
 
   // Bootstrap: load config + project root.
@@ -142,24 +147,31 @@ export default function App(): JSX.Element {
   const developerEditor = config.editors.find((e) => e.id === 'file')
   const consultantEditor = config.editors.find((e) => e.id === 'consultantFile')
 
-  function openFileInDeveloperPane(path: string): void {
+  async function openFileInDeveloperPane(path: string): Promise<void> {
     if (!developerEditor) return
-    if (!confirmDiscardIfDirty('file', 'open the new file')) return
+    if (!(await promptDirtyBeforeAction('file', 'open the new file'))) return
     setEditorPane('file', { filePath: path })
   }
-  function openFileInConsultantPane(path: string): void {
+  async function openFileInConsultantPane(path: string): Promise<void> {
     const target = consultantEditor ? 'consultantFile' : 'file'
-    if (!confirmDiscardIfDirty(target, 'open the new file')) return
+    if (!(await promptDirtyBeforeAction(target, 'open the new file'))) return
     setEditorPane(target, { filePath: path })
   }
-  function toggleConsultantExplorer(): void {
+  async function toggleConsultantExplorer(): Promise<void> {
     if (!config) return
     const next = !config.consultantExplorerVisible
-    // Turning off removes the consultantFile pane; confirm if it has unsaved edits.
-    if (!next && !confirmDiscardIfDirty('consultantFile', 'close the consultant file editor')) {
+    // Turning off removes the consultantFile pane; prompt if it has unsaved edits.
+    if (!next && !(await promptDirtyBeforeAction('consultantFile', 'close the consultant file editor'))) {
       return
     }
     setConsultantExplorerVisible(next)
+  }
+  function toggleDeveloperExplorer(): void {
+    if (!config) return
+    setDeveloperExplorerVisible(!config.developerExplorerVisible)
+  }
+  function changeNotesPath(newPath: string): void {
+    patchConfig({ notesPath: newPath })
   }
 
   return (
@@ -170,9 +182,6 @@ export default function App(): JSX.Element {
           <div className="sub">{projectRoot}</div>
         </div>
         <div className="actions">
-          <button onClick={toggleConsultantExplorer} title="Toggle consultant-side file explorer">
-            {config.consultantExplorerVisible ? '✓ ' : ''}Consultant Explorer
-          </button>
           <button onClick={() => setShowGitDialog(true)} title="git add + commit + push">
             Sync &amp; Push
           </button>
@@ -212,6 +221,12 @@ export default function App(): JSX.Element {
                         onSelectionChange={setConsultantSelection}
                         onSendToOther={() => sendTerminalToOther('consultant')}
                         onSendToNotes={() => sendTerminalToNotes('consultant')}
+                        trailingTool={
+                          <ExplorerToggleButton
+                            visible={true}
+                            onClick={() => void toggleConsultantExplorer()}
+                          />
+                        }
                       />
                     </Panel>
                   </PanelGroup>
@@ -224,6 +239,12 @@ export default function App(): JSX.Element {
                     onSelectionChange={setConsultantSelection}
                     onSendToOther={() => sendTerminalToOther('consultant')}
                     onSendToNotes={() => sendTerminalToNotes('consultant')}
+                    trailingTool={
+                      <ExplorerToggleButton
+                        visible={false}
+                        onClick={() => void toggleConsultantExplorer()}
+                      />
+                    }
                   />
                 )}
               </Panel>
@@ -231,30 +252,54 @@ export default function App(): JSX.Element {
               <HSplitHandle />
 
               <Panel defaultSize={config.layout.topHorizontal[1]} minSize={20}>
-                <PanelGroup
-                  direction="horizontal"
-                  onLayout={(sizes) => setLayout({ developerInner: [sizes[0], sizes[1]] })}
-                >
-                  <Panel defaultSize={config.layout.developerInner[0]} minSize={10}>
-                    <FileTree
-                      root={config.developer_dir}
-                      label="Project Files"
-                      onOpenFile={openFileInDeveloperPane}
-                    />
-                  </Panel>
-                  <HSplitHandle />
-                  <Panel defaultSize={config.layout.developerInner[1]} minSize={20}>
-                    <TerminalPane
-                      id="developer"
-                      label="Developer"
-                      cwd={config.developer_dir}
-                      command={config.developer_tool}
-                      onSelectionChange={setDeveloperSelection}
-                      onSendToOther={() => sendTerminalToOther('developer')}
-                      onSendToNotes={() => sendTerminalToNotes('developer')}
-                    />
-                  </Panel>
-                </PanelGroup>
+                {config.developerExplorerVisible ? (
+                  <PanelGroup
+                    direction="horizontal"
+                    onLayout={(sizes) => setLayout({ developerInner: [sizes[0], sizes[1]] })}
+                  >
+                    <Panel defaultSize={config.layout.developerInner[0]} minSize={10}>
+                      <FileTree
+                        root={config.developer_dir}
+                        label="Project Files"
+                        onOpenFile={openFileInDeveloperPane}
+                      />
+                    </Panel>
+                    <HSplitHandle />
+                    <Panel defaultSize={config.layout.developerInner[1]} minSize={20}>
+                      <TerminalPane
+                        id="developer"
+                        label="Developer"
+                        cwd={config.developer_dir}
+                        command={config.developer_tool}
+                        onSelectionChange={setDeveloperSelection}
+                        onSendToOther={() => sendTerminalToOther('developer')}
+                        onSendToNotes={() => sendTerminalToNotes('developer')}
+                        trailingTool={
+                          <ExplorerToggleButton
+                            visible={true}
+                            onClick={toggleDeveloperExplorer}
+                          />
+                        }
+                      />
+                    </Panel>
+                  </PanelGroup>
+                ) : (
+                  <TerminalPane
+                    id="developer"
+                    label="Developer"
+                    cwd={config.developer_dir}
+                    command={config.developer_tool}
+                    onSelectionChange={setDeveloperSelection}
+                    onSendToOther={() => sendTerminalToOther('developer')}
+                    onSendToNotes={() => sendTerminalToNotes('developer')}
+                    trailingTool={
+                      <ExplorerToggleButton
+                        visible={false}
+                        onClick={toggleDeveloperExplorer}
+                      />
+                    }
+                  />
+                )}
               </Panel>
             </PanelGroup>
           </Panel>
@@ -268,6 +313,7 @@ export default function App(): JSX.Element {
               onLayout={(sizes) => setLayout({ bottomHorizontal: sizes })}
               notesAppend={notesAppend}
               registerEditor={registerEditor}
+              onChangeNotesPath={changeNotesPath}
             />
           </Panel>
         </PanelGroup>
@@ -285,13 +331,15 @@ function BottomEditors({
   initialSizes,
   onLayout,
   notesAppend,
-  registerEditor
+  registerEditor,
+  onChangeNotesPath
 }: {
   panes: EditorPaneData[]
   initialSizes: number[]
   onLayout: (sizes: number[]) => void
   notesAppend: { seq: number; text: string } | null
   registerEditor: (id: string) => (h: EditorPaneHandle | null) => void
+  onChangeNotesPath: (newPath: string) => void
 }): JSX.Element {
   const setEditorPane = useStore((s) => s.setEditorPane)
   const config = useStore((s) => s.config)!
@@ -318,6 +366,7 @@ function BottomEditors({
               filePath: pane.isNotes ? notesPath : pane.filePath
             }}
             onRename={(name) => setEditorPane(pane.id, { name })}
+            onChangeNotesPath={pane.isNotes ? onChangeNotesPath : undefined}
             externalAppend={pane.isNotes ? notesAppend : null}
           />
         </PaneWithHandle>
@@ -342,5 +391,22 @@ function PaneWithHandle({
         {children}
       </Panel>
     </>
+  )
+}
+
+function ExplorerToggleButton({
+  visible,
+  onClick
+}: {
+  visible: boolean
+  onClick: () => void
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      title={visible ? 'Hide file explorer for this side' : 'Show file explorer for this side'}
+    >
+      {visible ? '× files' : '☰ files'}
+    </button>
   )
 }

@@ -10,6 +10,7 @@ type Store = {
   patchConfig: (partial: Partial<Config>) => void
   setLayout: (partial: Partial<LayoutState>) => void
   setConsultantExplorerVisible: (v: boolean) => void
+  setDeveloperExplorerVisible: (v: boolean) => void
   setEditorPane: (id: string, patch: Partial<EditorPane>) => void
   addEditorPane: (pane: EditorPane) => void
   removeEditorPane: (id: string) => void
@@ -65,6 +66,13 @@ export const useStore = create<Store>((set, get) => ({
       if (idx >= 0) editors.splice(idx, 1)
     }
     const next = { ...cur, consultantExplorerVisible: v, editors }
+    set({ config: next })
+    scheduleSave(next)
+  },
+  setDeveloperExplorerVisible: (v) => {
+    const cur = get().config
+    if (!cur) return
+    const next = { ...cur, developerExplorerVisible: v }
     set({ config: next })
     scheduleSave(next)
   },

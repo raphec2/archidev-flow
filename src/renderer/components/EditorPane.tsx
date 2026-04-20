@@ -9,6 +9,7 @@ import type { EditorPane as EditorPaneData } from '../../shared/config'
 export type EditorPaneHandle = {
   isDirty: () => boolean
   save: () => Promise<{ ok: boolean; error?: string }>
+  saveAs: (path: string) => Promise<{ ok: boolean; error?: string }>
   path: () => string | null
   displayName: () => string
 }
@@ -16,11 +17,12 @@ export type EditorPaneHandle = {
 type Props = {
   pane: EditorPaneData
   onRename: (name: string) => void
+  onChangeNotesPath?: (newPath: string) => void
   externalAppend?: { seq: number; text: string } | null
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPane(
-  { pane, onRename, externalAppend },
+  { pane, onRename, onChangeNotesPath, externalAppend },
   ref
 ): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -38,16 +40,13 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     setDirty(v)
   }
 
-  async function doSave(): Promise<{ ok: boolean; error?: string }> {
+  async function writeTo(target: string): Promise<{ ok: boolean; error?: string }> {
     const view = viewRef.current
-    const target = paneRef.current.filePath
     if (!view) return { ok: false, error: 'editor not ready' }
-    if (!target) return { ok: false, error: 'no file to save' }
     const content = view.state.doc.toString()
     setStatus('saving…')
     try {
       await window.api.fs.write(target, content)
-      // Only clear dirty if the doc hasn't been edited further during the write.
       if (viewRef.current && viewRef.current.state.doc.toString() === content) {
         markDirty(false)
       }
@@ -61,12 +60,35 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     }
   }
 
+  async function doSave(): Promise<{ ok: boolean; error?: string }> {
+    const target = paneRef.current.filePath
+    if (!target) return { ok: false, error: 'no file to save' }
+    return writeTo(target)
+  }
+
   useImperativeHandle(ref, () => ({
     isDirty: () => dirtyRef.current,
     save: doSave,
+    saveAs: (path: string) => writeTo(path),
     path: () => paneRef.current.filePath,
     displayName: () => paneRef.current.name
   }))
+
+  async function handleChangeNotesPath(): Promise<void> {
+    if (!onChangeNotesPath) return
+    const current = paneRef.current.filePath || undefined
+    const picked = await window.api.dialog.pickSavePath({
+      title: 'Choose notes save location',
+      defaultPath: current
+    })
+    if (!picked) return
+    // Write current buffer to the chosen path so switching persists content.
+    // The parent then updates config.notesPath, the file-load effect reloads
+    // from the new path (same content we just wrote), and dirty clears.
+    const r = await writeTo(picked)
+    if (!r.ok) return
+    onChangeNotesPath(picked)
+  }
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -171,6 +193,14 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
         </div>
         <div className="toolbar">
           {status && <span style={{ color: 'var(--text-2)', fontSize: 11 }}>{status}</span>}
+          {pane.isNotes && onChangeNotesPath && (
+            <button
+              onClick={() => void handleChangeNotesPath()}
+              title="Choose a different file/location for saving notes"
+            >
+              Notes path…
+            </button>
+          )}
           <button
             onClick={() => void doSave()}
             disabled={!canSave}

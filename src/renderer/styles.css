@@ -103,6 +103,19 @@ input:focus, textarea:focus {
   height: 100%;
   background: var(--bg-1);
   overflow: hidden;
+  /* reserve space so focused-vs-unfocused doesn't reflow neighbouring panes */
+  border: 1px solid transparent;
+}
+.pane:focus-within {
+  border-color: var(--accent);
+}
+.pane:focus-within > .pane-header {
+  background: var(--accent-dim);
+  color: var(--text-0);
+}
+.pane:focus-within > .pane-header .label,
+.pane:focus-within > .pane-header .path {
+  color: var(--text-0);
 }
 
 .pane-header {
@@ -191,6 +204,7 @@ input:focus, textarea:focus {
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 4px 0;
+  outline: none;
 }
 .tree-item {
   display: flex;

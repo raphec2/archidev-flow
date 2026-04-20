@@ -1,5 +1,11 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
-import { IPC, type PtyOpenArgs } from '../shared/ipc'
+import {
+  IPC,
+  type PtyOpenArgs,
+  type ConfirmUnsavedArgs,
+  type PickSavePathArgs,
+  type UnsavedChoice
+} from '../shared/ipc'
 import type { Config } from '../shared/config'
 import type { SessionBackend } from './session/backend'
 import type { WorkspaceStore } from './workspace/store'
@@ -62,6 +68,34 @@ export function registerIpc(deps: IpcDeps): void {
     const r = await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })
+
+  ipcMain.handle(IPC.dialog.pickSavePath, async (_e, args: PickSavePathArgs) => {
+    const r = await dialog.showSaveDialog(window, {
+      title: args.title || 'Choose save location',
+      defaultPath: args.defaultPath,
+      properties: ['showOverwriteConfirmation', 'createDirectory']
+    })
+    return r.canceled ? null : r.filePath ?? null
+  })
+
+  ipcMain.handle(
+    IPC.dialog.confirmUnsaved,
+    async (_e, args: ConfirmUnsavedArgs): Promise<UnsavedChoice> => {
+      const r = await dialog.showMessageBox(window, {
+        type: 'warning',
+        buttons: ['Save', "Don't Save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+        title: 'Unsaved changes',
+        message: `"${args.name}" has unsaved changes.`,
+        detail: `Save your changes before you ${args.action}?`
+      })
+      if (r.response === 0) return 'save'
+      if (r.response === 1) return 'discard'
+      return 'cancel'
+    }
+  )
 
   ipcMain.handle(IPC.tool.detect, () => detectTools())
 }

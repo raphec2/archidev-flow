@@ -26,7 +26,9 @@ export const IPC = {
     output: 'git:output'
   },
   dialog: {
-    pickDirectory: 'dialog:pickDirectory'
+    pickDirectory: 'dialog:pickDirectory',
+    pickSavePath: 'dialog:pickSavePath',
+    confirmUnsaved: 'dialog:confirmUnsaved'
   },
   tool: {
     detect: 'tool:detect'
@@ -39,4 +41,16 @@ export type PtyOpenArgs = {
   command: string
   cols: number
   rows: number
+}
+
+export type UnsavedChoice = 'save' | 'discard' | 'cancel'
+
+export type ConfirmUnsavedArgs = {
+  name: string
+  action: string
+}
+
+export type PickSavePathArgs = {
+  title?: string
+  defaultPath?: string
 }

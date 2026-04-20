@@ -106,7 +106,7 @@ export function FileTree({ root, label, onOpenFile }: Props): JSX.Element {
           <button onClick={loadRoot} title="Refresh">↻</button>
         </div>
       </div>
-      <div className="tree">
+      <div className="tree" tabIndex={0}>
         {error && <div className="tree-item status-err" style={{ paddingLeft: 8 }}>{error}</div>}
         {renderNodes(tree, 0)}
       </div>

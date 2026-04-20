@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type PtyOpenArgs } from '../shared/ipc'
+import {
+  IPC,
+  type PtyOpenArgs,
+  type ConfirmUnsavedArgs,
+  type PickSavePathArgs,
+  type UnsavedChoice
+} from '../shared/ipc'
 import type {
   Config,
   DirEntry,
@@ -51,7 +57,11 @@ const api = {
     }
   },
   dialog: {
-    pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.dialog.pickDirectory)
+    pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.dialog.pickDirectory),
+    pickSavePath: (args: PickSavePathArgs): Promise<string | null> =>
+      ipcRenderer.invoke(IPC.dialog.pickSavePath, args),
+    confirmUnsaved: (args: ConfirmUnsavedArgs): Promise<UnsavedChoice> =>
+      ipcRenderer.invoke(IPC.dialog.confirmUnsaved, args)
   },
   tool: {
     detect: (): Promise<DetectedTools> => ipcRenderer.invoke(IPC.tool.detect)

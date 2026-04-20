@@ -72,6 +72,7 @@ export class LocalFsWorkspaceStore implements WorkspaceStore {
         consultantInner: [25, 75]
       },
       consultantExplorerVisible: false,
+      developerExplorerVisible: true,
       editors: [
         { id: 'notes', name: 'Notes', filePath: null, isNotes: true },
         { id: 'file', name: 'File', filePath: null, isNotes: false }

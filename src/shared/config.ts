@@ -26,6 +26,7 @@ export type Config = {
   developer_tool: string
   layout: LayoutState
   consultantExplorerVisible: boolean
+  developerExplorerVisible: boolean
   editors: EditorPane[]
   notesPath: string
   lastOpenedFiles: string[]
