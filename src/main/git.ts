@@ -1,16 +1,21 @@
 import { spawn } from 'child_process'
+import type { GitSyncStep } from '../shared/config'
 
-function runCmd(cwd: string, args: string[], onOutput: (chunk: string) => void): Promise<number> {
-  return new Promise((resolve) => {
+function runCmd(
+  cwd: string,
+  args: string[],
+  onOutput: (chunk: string) => void
+): Promise<number> {
+  return new Promise((resolvePromise) => {
     onOutput(`$ git ${args.join(' ')}\n`)
     const p = spawn('git', args, { cwd, env: process.env })
     p.stdout.on('data', (b) => onOutput(b.toString()))
     p.stderr.on('data', (b) => onOutput(b.toString()))
     p.on('error', (err) => {
       onOutput(`\n(failed to spawn git: ${err.message})\n`)
-      resolve(1)
+      resolvePromise(1)
     })
-    p.on('close', (code) => resolve(code ?? 1))
+    p.on('close', (code) => resolvePromise(code ?? 1))
   })
 }
 
@@ -18,7 +23,7 @@ export async function runGitSync(
   cwd: string,
   message: string,
   onOutput: (chunk: string) => void
-): Promise<{ ok: boolean; code: number; step: 'add' | 'commit' | 'push' | 'done' }> {
+): Promise<{ ok: boolean; code: number; step: GitSyncStep }> {
   const addCode = await runCmd(cwd, ['add', '.'], onOutput)
   if (addCode !== 0) return { ok: false, code: addCode, step: 'add' }
 

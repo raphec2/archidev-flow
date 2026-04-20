@@ -2,17 +2,17 @@
   "name": "archidev-flow",
   "version": "0.1.0",
   "description": "Local desktop workspace for a dual-AI CLI workflow",
-  "main": "./out/main/index.js",
+  "main": ".vite/build/main.js",
   "author": "raphec",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "start": "electron-vite preview",
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "package": "electron-vite build && electron-builder",
     "postinstall": "node scripts/rebuild-native.js"
   },
   "dependencies": {
@@ -30,51 +30,24 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.6.0",
+    "@electron-forge/maker-deb": "^7.6.0",
+    "@electron-forge/maker-dmg": "^7.6.0",
+    "@electron-forge/maker-rpm": "^7.6.0",
+    "@electron-forge/maker-squirrel": "^7.6.0",
+    "@electron-forge/maker-zip": "^7.6.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.6.0",
+    "@electron-forge/plugin-vite": "^7.6.0",
     "@types/node": "^20.14.11",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0",
-    "electron-vite": "^2.3.0",
     "node-gyp": "^10.3.1",
     "typescript": "^5.5.3",
     "vite": "^5.3.4"
   },
   "overrides": {
     "node-gyp": "^10.3.1"
-  },
-  "build": {
-    "appId": "dev.archidev.flow",
-    "productName": "ArchiDev-Flow",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "out/**/*",
-      "package.json"
-    ],
-    "asarUnpack": [
-      "**/node_modules/node-pty/build/Release/*"
-    ],
-    "npmRebuild": false,
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "category": "Development"
-    },
-    "win": {
-      "target": [
-        "nsis"
-      ]
-    }
   }
 }

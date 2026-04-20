@@ -1,12 +1,12 @@
-node_modules/
-out/
-dist/
-release/
-.vite/
+node_modules
+.vite
+out
+release
+.DS_Store
 *.log
 *.tsbuildinfo
-.DS_Store
 
-# Dual-AI primers — local, not shared
+# Local agent/editor guidance kept off the shipped repo
 CLAUDE.md
 CODEX.md
+.claude

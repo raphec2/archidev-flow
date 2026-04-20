@@ -36,3 +36,13 @@ export type DetectedTools = {
   claude?: string
   codex?: string
 }
+
+export type PtyExitInfo = { exitCode: number; signal?: number }
+
+export type GitSyncStep = 'add' | 'commit' | 'push' | 'done'
+export type GitSyncResult = {
+  ok: boolean
+  code: number
+  step: GitSyncStep
+  output: string
+}

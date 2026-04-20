@@ -16,6 +16,6 @@
   "include": [
     "src/renderer/**/*",
     "src/shared/**/*",
-    "src/preload/index.d.ts"
+    "src/preload/api.d.ts"
   ]
 }

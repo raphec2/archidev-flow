@@ -1,64 +1,120 @@
-# ArchiDev-Flow
+# ArchiDev-Flow (v1x)
 
-Local desktop workspace for a dual-AI CLI workflow.
+Local desktop workspace for a dual-AI CLI workflow. Terminal host with a
+lightweight editor — not an IDE.
 
-- **Left pane**: architect/consultant terminal (point it at Codex/Claude/Aider/etc.)
-- **Right pane**: developer terminal (point it at a different tool — or the same one in a different role)
-- Bottom: Notes + file editor (CodeMirror 6) with native right-click context menu (Cut/Copy/Paste/Select All)
-- Built-in file explorers and a one-click `git add && commit && push` flow
+- **Left pane**: architect/consultant terminal
+- **Right pane**: developer terminal
+- **Bottom**: Notes + file editor (CodeMirror 6, explicit save)
+- Built-in file explorers and a one-click `git add && commit && push`
 
-On first launch a short wizard detects `claude` and `codex` on your `PATH`, lets you pick one per pane (or enter a custom command), and lets you pick the consultant's working directory. The developer pane always runs from the directory you launched the app from.
-
-Local-only. No cloud, no auth, no telemetry. Electron's default File/Edit/View menu is hidden — everything lives in-app.
+Local-only. No cloud, no auth, no telemetry, no plugin system.
 
 ## Prerequisites
 
 - Node.js 20+
-- Python / build tools for `node-pty` native module:
+- Native toolchain for `node-pty`:
   - **macOS**: Xcode Command Line Tools
   - **Linux**: `build-essential`, `python3`
-  - **Windows**: `npm config set msvs_version 2022`, Python 3, Visual Studio Build Tools
+  - **Windows**: Python 3 + Visual Studio Build Tools
 
-## Install & run (dev)
+## Dev
 
 ```bash
 npm install
-npm run dev
+npm start
 ```
 
-The postinstall hook (`scripts/rebuild-native.js`) rebuilds `node-pty` against the installed Electron's ABI. It invokes `node-gyp` directly — fetching Electron headers to `~/.electron-gyp/<version>/` on first run — instead of `electron-builder install-app-deps`, which transitively uses `@electron/rebuild` and has been observed to hang on Linux.
+`npm start` runs `electron-forge start`, which loads the Vite dev server for
+the renderer and the main/preload bundles. The `postinstall` hook
+(`scripts/rebuild-native.js`) rebuilds `node-pty` against the installed
+Electron ABI by invoking `node-gyp` directly — avoiding `@electron/rebuild`,
+which has been observed to hang on Linux. Set
+`ARCHIDEV_SKIP_NATIVE_REBUILD=1` to skip on CI.
 
-If `npm install` fails with `ModuleNotFoundError: No module named 'distutils'` under Python 3.12+, delete `node_modules` and `package-lock.json` and reinstall — the `overrides` block in `package.json` pins `node-gyp` to 10.x, which drops the `distutils` import. To skip the native rebuild entirely (e.g. on CI that doesn't run Electron), set `ARCHIDEV_SKIP_NATIVE_REBUILD=1`.
-
-## Build a distributable
+## Packaging
 
 ```bash
-npm run package
+npm run make
 ```
 
-Artifacts land in `release/`. Linux emits an `.AppImage`, macOS a `.dmg` + `.zip`, Windows an `nsis` installer. Native modules (`node-pty`) are emitted outside the ASAR archive via `asarUnpack` so they load correctly at runtime. `npmRebuild` is disabled in the electron-builder config — the postinstall has already rebuilt `node-pty` against the correct Electron ABI, and electron-builder's own rebuild path hangs in some Linux environments.
+Artifacts land in `out/`. Forge uses its own makers: Squirrel for Windows,
+DMG + ZIP for macOS, deb + rpm for Linux. `node-pty` is unpacked from the
+asar archive by `@electron-forge/plugin-auto-unpack-natives`.
 
-## Downloads
+Builds are unsigned — macOS shows "unidentified developer", Windows triggers
+SmartScreen warnings.
 
-Prebuilt installers for Linux (`.AppImage`), macOS (`.dmg`), and Windows (`.exe`) are attached to GitHub Releases. To cut a new release:
+## Architecture
 
-```bash
-git tag v0.1.1 && git push origin v0.1.1
+```
+src/
+  main/
+    index.ts              app lifecycle, createWindow
+    ipc.ts                IPC wiring
+    detect.ts             claude/codex on PATH
+    git.ts                git add/commit/push runner
+    session/
+      backend.ts          SessionBackend interface (seam)
+      local-pty.ts        node-pty implementation
+    workspace/
+      store.ts            WorkspaceStore interface (seam)
+      local-fs.ts         per-workspace userData impl + legacy migration
+    context/
+      source.ts           ContextSource interface (seam)
+      local-fs.ts         dir listing + file read/write
+  preload/
+    index.ts              contextBridge
+    api.d.ts              window.api ambient type
+  renderer/
+    main.tsx, App.tsx, store.ts, styles.css
+    components/{TerminalPane,EditorPane,FileTree,GitSyncDialog,OnboardingDialog}.tsx
+  shared/
+    config.ts, ipc.ts
 ```
 
-GitHub Actions (`.github/workflows/release.yml`) spins up one runner per platform, runs `npm ci && npm run package`, and drafts a release with the three artifacts attached. Builds are unsigned — macOS users see "unidentified developer" and Windows shows SmartScreen warnings.
+Boundaries are strict: the renderer only talks to main via `window.api.*`
+(`contextIsolation: true`, `nodeIntegration: false`). Native access
+(node-pty, filesystem, git) lives only in main.
 
-## Config
+### Three abstraction seams
 
-On first launch, `config.json` is written to Electron's `userData` dir. The directory uses the app's `productName` when packaged and the lowercase `name` from `package.json` in `npm run dev`:
+These exist to keep future additions (SSH sessions, alternate persistence,
+richer context sources) from forcing a rewrite of the UI contract. Only
+local implementations exist today and that is the end of the scope; no
+future features are implemented.
 
-| Platform | Packaged | Dev (`npm run dev`) |
-|---|---|---|
-| macOS | `~/Library/Application Support/ArchiDev-Flow/config.json` | `~/Library/Application Support/archidev-flow/config.json` |
-| Linux | `~/.config/ArchiDev-Flow/config.json` | `~/.config/archidev-flow/config.json` |
-| Windows | `%APPDATA%/ArchiDev-Flow/config.json` | `%APPDATA%/archidev-flow/config.json` |
+- `SessionBackend` → `LocalPtyBackend`
+- `WorkspaceStore` → `LocalFsWorkspaceStore`
+- `ContextSource` → `LocalFsContextSource`
 
-Edit with any text editor (or re-run the onboarding wizard by setting `"onboardingComplete": false` and relaunching). Fields:
+## Workspace persistence
+
+State lives under Electron `userData/workspaces/<sha256[:16]>/`, keyed from
+the project root the app was launched in. A sibling `meta.json` records the
+human-readable absolute path; a default `notes.md` is created once. A legacy
+`userData/config.json` is consumed once as a seed for the first workspace
+post-upgrade and then archived to `config.legacy.json`.
+
+## Save model
+
+Editor files are explicit-save only. Dirty state is shown per pane with an
+orange dot; `Ctrl/Cmd+S` or the Save button writes to disk. Unsaved changes
+are guarded on: pane replacement (opening a new file), consultant-explorer
+close (destroys `consultantFile` pane), and window unload / app quit.
+
+Layout and workspace metadata autosave debounced — that is low-risk and
+matches v1 behaviour.
+
+## Session lifecycle
+
+PTYs are owned by the main process. Teardown happens exclusively in
+`window-all-closed` — never in `before-quit`, because `before-quit` fires
+before the renderer's `beforeunload` can veto the quit for unsaved editor
+changes. Tearing down PTYs there left terminal panes dead after a cancelled
+quit in v1; v1x does not carry that bug forward.
+
+## Config schema
 
 ```json
 {
@@ -75,16 +131,7 @@ Edit with any text editor (or re-run the onboarding wizard by setting `"onboardi
 }
 ```
 
-Project root defaults to the directory you launched the app from. In dev, that's this repo.
+## Out of scope
 
-## Architecture notes
-
-- **Main process** owns all native access: `node-pty`, filesystem reads/writes, `git` spawns, config JSON.
-- **Preload** exposes a typed API via `contextBridge`. `contextIsolation: true`, `nodeIntegration: false`.
-- **Renderer** is plain React, calls `window.api.*`. No Node access.
-- Configured commands are wrapped in the user's shell so the pane stays usable if the AI CLI exits — the shell surfaces an `[tool exited — shell is still open]` banner and an in-UI exit badge.
-- `git push` relies on your preconfigured credentials (SSH key / credential helper). Failures surface stderr in the dialog.
-
-## Out of scope for v1
-
-Multi-project management, terminal session restoration, advanced git UI, provider-specific AI logic, plugins, auth, collaboration, cloud sync.
+Multi-project management, SSH terminals, remote editing, cloud sync,
+plugins, settings UI, auth, collaboration.

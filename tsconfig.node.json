@@ -14,7 +14,9 @@
     "baseUrl": "."
   },
   "include": [
-    "electron.vite.config.ts",
+    "forge.config.ts",
+    "vite.main.config.ts",
+    "vite.preload.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*"

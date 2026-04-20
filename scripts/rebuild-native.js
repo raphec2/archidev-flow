@@ -2,9 +2,10 @@
 /*
  * Rebuild native deps (node-pty) against the installed Electron ABI.
  *
- * Replaces `electron-builder install-app-deps`, which transitively uses
- * `@electron/rebuild` and hangs on Linux with node-gyp >=10 in some
- * environments. This invokes node-gyp directly — deterministic, no daemon.
+ * Invokes node-gyp directly instead of going through @electron/rebuild, which
+ * has been observed to hang on Linux in node-gyp >=10 environments. Forge's
+ * own rebuild path also routes through @electron/rebuild, so we rely on this
+ * postinstall having already produced the correct binaries.
  *
  * Skipped when CI disables native rebuilds or when Electron isn't installed.
  */
@@ -32,17 +33,20 @@ const nodedir = join(os.homedir(), '.electron-gyp', electronVersion)
 function ensureHeaders() {
   const markerFile = join(nodedir, 'installVersion')
   const includeDir = join(nodedir, 'include', 'node')
-  if (existsSync(markerFile) && existsSync(includeDir)) return
+  if (existsSync(markerFile) && existsSync(includeDir)) return Promise.resolve()
   mkdirSync(nodedir, { recursive: true })
   const url = `https://electronjs.org/headers/v${electronVersion}/node-v${electronVersion}-headers.tar.gz`
   console.log(`[rebuild-native] fetching headers: ${url}`)
   const tarballPath = join(nodedir, 'headers.tar.gz')
-  downloadTo(url, tarballPath)
-  const extract = spawnSync('tar', ['-xzf', tarballPath, '--strip-components=1', '-C', nodedir], {
-    stdio: 'inherit'
+  return downloadTo(url, tarballPath).then(() => {
+    const extract = spawnSync(
+      'tar',
+      ['-xzf', tarballPath, '--strip-components=1', '-C', nodedir],
+      { stdio: 'inherit' }
+    )
+    if (extract.status !== 0) throw new Error('[rebuild-native] failed to extract headers')
+    writeFileSync(markerFile, '9\n')
   })
-  if (extract.status !== 0) throw new Error('[rebuild-native] failed to extract headers')
-  writeFileSync(markerFile, '9\n')
 }
 
 function downloadTo(url, dest) {
@@ -73,7 +77,12 @@ function rebuild(moduleName) {
     console.log(`[rebuild-native] ${moduleName} not found — skipping`)
     return
   }
-  const nodeGyp = join(projectRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp')
+  const nodeGyp = join(
+    projectRoot,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp'
+  )
   if (!existsSync(nodeGyp)) throw new Error('[rebuild-native] node-gyp not installed')
   console.log(`[rebuild-native] rebuilding ${moduleName} for electron@${electronVersion} (${arch})`)
   const result = spawnSync(

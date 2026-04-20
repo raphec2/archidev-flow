@@ -1,57 +1,67 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
-import { loadOrCreateConfig, saveConfig } from './config'
-import { openPty, writePty, resizePty, closePty } from './pty'
-import { listDir, readFile, writeFile } from './fsops'
+import { IPC, type PtyOpenArgs } from '../shared/ipc'
+import type { Config } from '../shared/config'
+import type { SessionBackend } from './session/backend'
+import type { WorkspaceStore } from './workspace/store'
+import type { ContextSource } from './context/source'
 import { runGitSync } from './git'
 import { detectTools } from './detect'
-import type { Config } from '../shared/config'
 
-export function registerIpc(win: BrowserWindow, projectRoot: string): void {
-  ipcMain.handle('app:getProjectRoot', () => projectRoot)
+export type IpcDeps = {
+  window: BrowserWindow
+  projectRoot: string
+  session: SessionBackend
+  workspace: WorkspaceStore
+  context: ContextSource
+}
 
-  ipcMain.handle('config:load', async () => loadOrCreateConfig(projectRoot))
-  ipcMain.handle('config:save', async (_e, cfg: Config) => {
-    await saveConfig(projectRoot, cfg)
+export function registerIpc(deps: IpcDeps): void {
+  const { window, projectRoot, session, workspace, context } = deps
+
+  ipcMain.handle(IPC.app.getProjectRoot, () => projectRoot)
+
+  ipcMain.handle(IPC.config.load, () => workspace.loadOrCreate(projectRoot))
+  ipcMain.handle(IPC.config.save, async (_e, cfg: Config) => {
+    await workspace.save(projectRoot, cfg)
     return true
   })
 
-  ipcMain.handle(
-    'pty:open',
-    (_e, args: { id: string; cwd: string; command: string; cols: number; rows: number }) => {
-      openPty({ ...args, window: win })
-      return true
-    }
+  ipcMain.handle(IPC.pty.open, (_e, args: PtyOpenArgs) => {
+    session.open(args)
+    return true
+  })
+  ipcMain.handle(IPC.pty.write, (_e, id: string, data: string) => {
+    session.write(id, data)
+    return true
+  })
+  ipcMain.handle(IPC.pty.resize, (_e, id: string, cols: number, rows: number) => {
+    session.resize(id, cols, rows)
+    return true
+  })
+  ipcMain.handle(IPC.pty.close, (_e, id: string) => {
+    session.close(id)
+    return true
+  })
+
+  ipcMain.handle(IPC.fs.list, (_e, dir: string) => context.list(dir))
+  ipcMain.handle(IPC.fs.read, (_e, path: string) => context.read(path))
+  ipcMain.handle(IPC.fs.write, (_e, path: string, content: string) =>
+    context.write(path, content)
   )
-  ipcMain.handle('pty:write', (_e, id: string, data: string) => {
-    writePty(id, data)
-    return true
-  })
-  ipcMain.handle('pty:resize', (_e, id: string, cols: number, rows: number) => {
-    resizePty(id, cols, rows)
-    return true
-  })
-  ipcMain.handle('pty:close', (_e, id: string) => {
-    closePty(id)
-    return true
-  })
 
-  ipcMain.handle('fs:list', (_e, dir: string) => listDir(dir))
-  ipcMain.handle('fs:read', (_e, path: string) => readFile(path))
-  ipcMain.handle('fs:write', (_e, path: string, content: string) => writeFile(path, content))
-
-  ipcMain.handle('git:sync', async (_e, cwd: string, message: string) => {
+  ipcMain.handle(IPC.git.sync, async (_e, cwd: string, message: string) => {
     const chunks: string[] = []
     const result = await runGitSync(cwd, message, (chunk) => {
       chunks.push(chunk)
-      if (!win.isDestroyed()) win.webContents.send('git:output', chunk)
+      if (!window.isDestroyed()) window.webContents.send(IPC.git.output, chunk)
     })
     return { ...result, output: chunks.join('') }
   })
 
-  ipcMain.handle('dialog:pickDirectory', async () => {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+  ipcMain.handle(IPC.dialog.pickDirectory, async () => {
+    const r = await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })
 
-  ipcMain.handle('tool:detect', () => detectTools())
+  ipcMain.handle(IPC.tool.detect, () => detectTools())
 }
