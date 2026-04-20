@@ -3,7 +3,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { useStore } from './store'
 import { TerminalPane } from './components/TerminalPane'
 import { FileTree } from './components/FileTree'
-import { EditorPane } from './components/EditorPane'
+import { EditorPane, type EditorPaneHandle } from './components/EditorPane'
 import { GitSyncDialog } from './components/GitSyncDialog'
 import { OnboardingDialog } from './components/OnboardingDialog'
 
@@ -31,6 +31,32 @@ export default function App(): JSX.Element {
   const [showGitDialog, setShowGitDialog] = useState(false)
   const [notesAppend, setNotesAppend] = useState<{ seq: number; text: string } | null>(null)
 
+  const editorRefs = useRef<Map<string, EditorPaneHandle | null>>(new Map())
+  const editorRefCbs = useRef<Map<string, (h: EditorPaneHandle | null) => void>>(new Map())
+
+  function registerEditor(id: string): (h: EditorPaneHandle | null) => void {
+    let cb = editorRefCbs.current.get(id)
+    if (!cb) {
+      cb = (h: EditorPaneHandle | null): void => {
+        if (h) editorRefs.current.set(id, h)
+        else editorRefs.current.delete(id)
+      }
+      editorRefCbs.current.set(id, cb)
+    }
+    return cb
+  }
+
+  function confirmDiscardIfDirty(paneId: string, action: string): boolean {
+    const h = editorRefs.current.get(paneId)
+    if (!h || !h.isDirty()) return true
+    const label = h.displayName() || paneId
+    const msg =
+      `"${label}" has unsaved changes.\n\n` +
+      `Click OK to discard them and ${action}.\n` +
+      `Click Cancel to go back (use Save first to keep them).`
+    return window.confirm(msg)
+  }
+
   // Bootstrap: load config + project root.
   useEffect(() => {
     let cancelled = false
@@ -45,6 +71,20 @@ export default function App(): JSX.Element {
       })
     return () => { cancelled = true }
   }, [setConfig, setProjectRoot])
+
+  // Warn on window close if any editor is dirty. Blocks reload and close-button.
+  // Does not intercept Cmd+Q / app.quit(); that path is documented as a gap.
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent): void {
+      const anyDirty = Array.from(editorRefs.current.values()).some((h) => !!h && h.isDirty())
+      if (anyDirty) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved editor changes.'
+      }
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
 
   if (!config) {
     return (
@@ -102,11 +142,22 @@ export default function App(): JSX.Element {
 
   function openFileInDeveloperPane(path: string): void {
     if (!developerEditor) return
+    if (!confirmDiscardIfDirty('file', 'open the new file')) return
     setEditorPane('file', { filePath: path })
   }
   function openFileInConsultantPane(path: string): void {
     const target = consultantEditor ? 'consultantFile' : 'file'
+    if (!confirmDiscardIfDirty(target, 'open the new file')) return
     setEditorPane(target, { filePath: path })
+  }
+  function toggleConsultantExplorer(): void {
+    if (!config) return
+    const next = !config.consultantExplorerVisible
+    // Turning off removes the consultantFile pane; confirm if it has unsaved edits.
+    if (!next && !confirmDiscardIfDirty('consultantFile', 'close the consultant file editor')) {
+      return
+    }
+    setConsultantExplorerVisible(next)
   }
 
   return (
@@ -118,7 +169,7 @@ export default function App(): JSX.Element {
         </div>
         <div className="actions">
           <button
-            onClick={() => setConsultantExplorerVisible(!config.consultantExplorerVisible)}
+            onClick={toggleConsultantExplorer}
             title="Toggle consultant-side file explorer"
           >
             {config.consultantExplorerVisible ? '✓ ' : ''}Consultant Explorer
@@ -219,6 +270,7 @@ export default function App(): JSX.Element {
               initialSizes={config.layout.bottomHorizontal}
               onLayout={(sizes) => setLayout({ bottomHorizontal: sizes })}
               notesAppend={notesAppend}
+              registerEditor={registerEditor}
             />
           </Panel>
         </PanelGroup>
@@ -235,12 +287,14 @@ function BottomEditors({
   panes,
   initialSizes,
   onLayout,
-  notesAppend
+  notesAppend,
+  registerEditor
 }: {
   panes: import('../../shared/config').EditorPane[]
   initialSizes: number[]
   onLayout: (sizes: number[]) => void
   notesAppend: { seq: number; text: string } | null
+  registerEditor: (id: string) => (h: EditorPaneHandle | null) => void
 }): JSX.Element {
   const setEditorPane = useStore((s) => s.setEditorPane)
   const config = useStore((s) => s.config)!
@@ -264,6 +318,7 @@ function BottomEditors({
           defaultSize={defaultSizes[idx] ?? Math.round(100 / panes.length)}
         >
           <EditorPane
+            ref={registerEditor(pane.id)}
             pane={{
               ...pane,
               filePath: pane.isNotes ? notesPath : pane.filePath

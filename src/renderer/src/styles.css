@@ -149,10 +149,16 @@ input:focus, textarea:focus {
 .pane-header .toolbar {
   display: flex;
   gap: 4px;
+  align-items: center;
 }
 .pane-header .toolbar button {
   padding: 1px 6px;
   font-size: 11px;
+}
+.pane-header .dirty-dot {
+  color: var(--warn);
+  font-size: 10px;
+  margin-right: 4px;
 }
 
 .pane-body {

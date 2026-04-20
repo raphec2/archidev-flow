@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { EditorState, Compartment } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
@@ -6,27 +6,68 @@ import { basicSetup } from 'codemirror'
 import { oneDark } from '@codemirror/theme-one-dark'
 import type { EditorPane as EditorPaneData } from '../../../shared/config'
 
+export type EditorPaneHandle = {
+  isDirty: () => boolean
+  save: () => Promise<{ ok: boolean; error?: string }>
+  path: () => string | null
+  displayName: () => string
+}
+
 type Props = {
   pane: EditorPaneData
   onRename: (name: string) => void
-  onContentChange?: (content: string) => void
   // Controlled content used for programmatic appends (e.g. terminal → notes).
   externalAppend?: { seq: number; text: string } | null
 }
 
-export function EditorPane({
-  pane,
-  onRename,
-  onContentChange,
-  externalAppend
-}: Props): JSX.Element {
+export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPane(
+  { pane, onRename, externalAppend },
+  ref
+): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const dirtyRef = useRef<boolean>(false)
-  const savingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const readOnlyComp = useRef(new Compartment())
   const [loadedPath, setLoadedPath] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
+  const [dirty, setDirty] = useState<boolean>(false)
+  const dirtyRef = useRef<boolean>(false)
+  const paneRef = useRef(pane)
+  paneRef.current = pane
+
+  function markDirty(v: boolean): void {
+    dirtyRef.current = v
+    setDirty(v)
+  }
+
+  async function doSave(): Promise<{ ok: boolean; error?: string }> {
+    const view = viewRef.current
+    const target = paneRef.current.filePath
+    if (!view) return { ok: false, error: 'editor not ready' }
+    if (!target) return { ok: false, error: 'no file to save' }
+    const content = view.state.doc.toString()
+    setStatus('saving…')
+    try {
+      await window.api.fs.write(target, content)
+      // Only clear dirty if the doc hasn't been edited further during the write.
+      if (viewRef.current && viewRef.current.state.doc.toString() === content) {
+        markDirty(false)
+      }
+      setStatus('saved')
+      setTimeout(() => setStatus((s) => (s === 'saved' ? '' : s)), 1200)
+      return { ok: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setStatus(msg)
+      return { ok: false, error: msg }
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    isDirty: () => dirtyRef.current,
+    save: doSave,
+    path: () => paneRef.current.filePath,
+    displayName: () => paneRef.current.name
+  }))
 
   // Create the editor once per mount.
   useEffect(() => {
@@ -35,15 +76,23 @@ export function EditorPane({
       doc: '',
       extensions: [
         basicSetup,
-        keymap.of([...defaultKeymap, indentWithTab]),
+        keymap.of([
+          {
+            key: 'Mod-s',
+            preventDefault: true,
+            run: () => {
+              void doSave()
+              return true
+            }
+          },
+          ...defaultKeymap,
+          indentWithTab
+        ]),
         oneDark,
         readOnlyComp.current.of(EditorState.readOnly.of(false)),
         EditorView.updateListener.of((v) => {
           if (v.docChanged) {
-            dirtyRef.current = true
-            const content = v.state.doc.toString()
-            onContentChange?.(content)
-            scheduleSave(content)
+            markDirty(true)
           }
         })
       ]
@@ -61,12 +110,13 @@ export function EditorPane({
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-    const target = pane.isNotes ? pane.filePath : pane.filePath
+    const target = pane.filePath
     if (!target) {
       // Nothing to load.
       if (!pane.isNotes && loadedPath !== null) {
         // Clear previous file if this pane switched back to empty.
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } })
+        markDirty(false)
         setLoadedPath(null)
       }
       return
@@ -80,7 +130,7 @@ export function EditorPane({
         if (current !== content) {
           view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } })
         }
-        dirtyRef.current = false
+        markDirty(false)
         setLoadedPath(target)
         setStatus('')
       })
@@ -89,7 +139,7 @@ export function EditorPane({
       })
   }, [pane.filePath, pane.isNotes, loadedPath])
 
-  // Handle external appends (selection → notes).
+  // Handle external appends (selection → notes). Marks dirty; user must Save.
   useEffect(() => {
     const view = viewRef.current
     if (!view || !externalAppend) return
@@ -101,30 +151,11 @@ export function EditorPane({
       selection: { anchor: view.state.doc.length + insert.length },
       scrollIntoView: true
     })
-    dirtyRef.current = true
-    scheduleSave(view.state.doc.toString() + '' )
+    markDirty(true)
   }, [externalAppend])
 
-  function scheduleSave(content: string): void {
-    if (!pane.filePath) return
-    if (savingTimer.current) clearTimeout(savingTimer.current)
-    savingTimer.current = setTimeout(() => {
-      const target = pane.filePath
-      if (!target) return
-      setStatus('saving…')
-      window.api.fs
-        .write(target, content)
-        .then(() => {
-          dirtyRef.current = false
-          setStatus('')
-        })
-        .catch((err: unknown) => {
-          setStatus(err instanceof Error ? err.message : String(err))
-        })
-    }, 400)
-  }
-
   const displayPath = pane.filePath || (pane.isNotes ? '(notes)' : '(no file)')
+  const canSave = dirty && !!pane.filePath
 
   return (
     <div className="pane">
@@ -137,10 +168,24 @@ export function EditorPane({
             spellCheck={false}
             aria-label="Pane name"
           />
-          <span className="path" title={displayPath}>{displayPath}</span>
+          <span className="path" title={displayPath}>
+            {dirty && (
+              <span className="dirty-dot" aria-label="unsaved changes" title="Unsaved changes">
+                ●
+              </span>
+            )}
+            {displayPath}
+          </span>
         </div>
         <div className="toolbar">
           {status && <span style={{ color: 'var(--text-2)', fontSize: 11 }}>{status}</span>}
+          <button
+            onClick={() => void doSave()}
+            disabled={!canSave}
+            title={pane.filePath ? 'Save (Ctrl/Cmd+S)' : 'No file to save'}
+          >
+            Save
+          </button>
         </div>
       </div>
       <div className="pane-body">
@@ -148,4 +193,4 @@ export function EditorPane({
       </div>
     </div>
   )
-}
+})
