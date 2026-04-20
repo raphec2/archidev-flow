@@ -72,8 +72,10 @@ export default function App(): JSX.Element {
     return () => { cancelled = true }
   }, [setConfig, setProjectRoot])
 
-  // Warn on window close if any editor is dirty. Blocks reload and close-button.
-  // Does not intercept Cmd+Q / app.quit(); that path is documented as a gap.
+  // Guard window close when any editor is dirty. Electron fires beforeunload for
+  // reload, close-button, and normal app quit (including macOS Cmd+Q and
+  // app.quit()); cancelling here aborts the quit. Forced app.exit(), crashes,
+  // and OS shutdown/logout bypass beforeunload and remain unprotected.
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent): void {
       const anyDirty = Array.from(editorRefs.current.values()).some((h) => !!h && h.isDirty())
