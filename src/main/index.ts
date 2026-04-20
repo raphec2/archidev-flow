@@ -64,6 +64,11 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(createWindow)
 
+// PTY teardown lives only here (and not in `before-quit`) because `before-quit`
+// fires before the renderer's `beforeunload` can veto the quit for unsaved
+// editor changes; tearing down PTYs there would leave terminal panes dead
+// after a cancelled quit. `window-all-closed` fires only once windows have
+// actually closed, i.e. the quit is really proceeding.
 app.on('window-all-closed', () => {
   closeAllPtys()
   if (process.platform !== 'darwin') app.quit()
@@ -71,8 +76,4 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
-})
-
-app.on('before-quit', () => {
-  closeAllPtys()
 })
