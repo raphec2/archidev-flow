@@ -11,7 +11,7 @@ export function registerIpc(win: BrowserWindow, projectRoot: string): void {
 
   ipcMain.handle('config:load', async () => loadOrCreateConfig(projectRoot))
   ipcMain.handle('config:save', async (_e, cfg: Config) => {
-    await saveConfig(cfg)
+    await saveConfig(projectRoot, cfg)
     return true
   })
 
