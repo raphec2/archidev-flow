@@ -103,19 +103,66 @@ input:focus, textarea:focus {
   height: 100%;
   background: var(--bg-1);
   overflow: hidden;
-  /* reserve space so focused-vs-unfocused doesn't reflow neighbouring panes */
-  border: 1px solid transparent;
+  /* Reserve 2px border so focused-vs-unfocused state doesn't reflow the
+     surrounding panel group. Focus state changes only color. */
+  border: 2px solid transparent;
+  position: relative;
 }
 .pane:focus-within {
   border-color: var(--accent);
 }
 .pane:focus-within > .pane-header {
   background: var(--accent-dim);
-  color: var(--text-0);
+  border-bottom-color: var(--accent);
 }
 .pane:focus-within > .pane-header .label,
-.pane:focus-within > .pane-header .path {
+.pane:focus-within > .pane-header .path,
+.pane:focus-within > .pane-header .pane-name-input {
   color: var(--text-0);
+}
+/* Full-height accent stripe down the left side of the focused pane header —
+   a scan-friendly marker that works even with the pane collapsed narrow. */
+.pane:focus-within > .pane-header::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+.explorer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  color: var(--text-1);
+  border-radius: 3px;
+}
+.explorer-toggle:hover {
+  background: var(--bg-3);
+  color: var(--text-0);
+  border-color: var(--accent-dim);
+}
+.explorer-toggle.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text-0);
+}
+.explorer-toggle.on:hover {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+.explorer-toggle .explorer-toggle-chev {
+  font-size: 10px;
+  line-height: 1;
 }
 
 .pane-header {
@@ -127,6 +174,7 @@ input:focus, textarea:focus {
   border-bottom: 1px solid var(--border);
   min-height: 26px;
   user-select: none;
+  position: relative;
 }
 .pane-header .label {
   font-size: 11px;

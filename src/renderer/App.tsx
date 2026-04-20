@@ -221,8 +221,9 @@ export default function App(): JSX.Element {
                         onSelectionChange={setConsultantSelection}
                         onSendToOther={() => sendTerminalToOther('consultant')}
                         onSendToNotes={() => sendTerminalToNotes('consultant')}
-                        trailingTool={
+                        leadingTool={
                           <ExplorerToggleButton
+                            side="consultant"
                             visible={true}
                             onClick={() => void toggleConsultantExplorer()}
                           />
@@ -239,8 +240,9 @@ export default function App(): JSX.Element {
                     onSelectionChange={setConsultantSelection}
                     onSendToOther={() => sendTerminalToOther('consultant')}
                     onSendToNotes={() => sendTerminalToNotes('consultant')}
-                    trailingTool={
+                    leadingTool={
                       <ExplorerToggleButton
+                        side="consultant"
                         visible={false}
                         onClick={() => void toggleConsultantExplorer()}
                       />
@@ -274,8 +276,9 @@ export default function App(): JSX.Element {
                         onSelectionChange={setDeveloperSelection}
                         onSendToOther={() => sendTerminalToOther('developer')}
                         onSendToNotes={() => sendTerminalToNotes('developer')}
-                        trailingTool={
+                        leadingTool={
                           <ExplorerToggleButton
+                            side="developer"
                             visible={true}
                             onClick={toggleDeveloperExplorer}
                           />
@@ -292,8 +295,9 @@ export default function App(): JSX.Element {
                     onSelectionChange={setDeveloperSelection}
                     onSendToOther={() => sendTerminalToOther('developer')}
                     onSendToNotes={() => sendTerminalToNotes('developer')}
-                    trailingTool={
+                    leadingTool={
                       <ExplorerToggleButton
+                        side="developer"
                         visible={false}
                         onClick={toggleDeveloperExplorer}
                       />
@@ -395,18 +399,26 @@ function PaneWithHandle({
 }
 
 function ExplorerToggleButton({
+  side,
   visible,
   onClick
 }: {
+  side: 'consultant' | 'developer'
   visible: boolean
   onClick: () => void
 }): JSX.Element {
+  const name = side === 'consultant' ? 'Consultant Files' : 'Project Files'
+  const title = visible ? `Hide ${name}` : `Show ${name}`
   return (
     <button
+      className={`explorer-toggle${visible ? ' on' : ''}`}
       onClick={onClick}
-      title={visible ? 'Hide file explorer for this side' : 'Show file explorer for this side'}
+      aria-pressed={visible}
+      aria-label={title}
+      title={title}
     >
-      {visible ? '× files' : '☰ files'}
+      <span className="explorer-toggle-chev" aria-hidden="true">{visible ? '◀' : '▶'}</span>
+      <span className="explorer-toggle-text">Files</span>
     </button>
   )
 }

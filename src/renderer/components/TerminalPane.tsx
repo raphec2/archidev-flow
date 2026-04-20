@@ -10,7 +10,7 @@ type Props = {
   onSelectionChange: (text: string) => void
   onSendToOther: () => void
   onSendToNotes: () => void
-  trailingTool?: React.ReactNode
+  leadingTool?: React.ReactNode
 }
 
 export function TerminalPane({
@@ -21,7 +21,7 @@ export function TerminalPane({
   onSelectionChange,
   onSendToOther,
   onSendToNotes,
-  trailingTool
+  leadingTool
 }: Props): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -129,6 +129,7 @@ export function TerminalPane({
     <div className="pane" data-terminal-id={id}>
       <div className="pane-header">
         <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+          {leadingTool}
           <span className="label">{label}</span>
           <span className="path" title={`${cwd} — ${command}`}>
             {cwd} · {command}
@@ -138,7 +139,6 @@ export function TerminalPane({
           <button onClick={onSendToOther} title="Paste selection into other terminal (no Enter)">→ terminal</button>
           <button onClick={onSendToNotes} title="Append selection to Notes">→ notes</button>
           <button onClick={restart} title="Kill the current process and rerun the configured tool">↻ restart</button>
-          {trailingTool}
         </div>
       </div>
       <div className="pane-body" onClick={focus}>
