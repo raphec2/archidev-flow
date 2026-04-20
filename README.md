@@ -10,6 +10,21 @@ lightweight editor — not an IDE.
 
 Local-only. No cloud, no auth, no telemetry, no plugin system.
 
+## Status
+
+This is the `v1x` rewrite foundation on Electron Forge. The prior
+electron-builder + electron-vite tree is recoverable via tag `v1-pre-v1x`
+and branch `v1-archive`.
+
+- **Validated today**: Linux x64 (dev run + `electron-forge package`).
+- **Not yet validated**: macOS and Windows runtime/packaging on the Forge
+  foundation. Expected to work; not exercised.
+- **No automated release workflow**: `.github/workflows/release.yml` was
+  removed because it targeted electron-builder artifacts. Releases are
+  manual (`npm run make`) until a Forge-compatible workflow lands.
+
+See `FOLLOWUPS.md` for short operational items still open.
+
 ## Prerequisites
 
 - Node.js 20+
@@ -50,7 +65,7 @@ SmartScreen warnings.
 ```
 src/
   main/
-    index.ts              app lifecycle, createWindow
+    main.ts               app lifecycle, createWindow
     ipc.ts                IPC wiring
     detect.ts             claude/codex on PATH
     git.ts                git add/commit/push runner
@@ -64,7 +79,7 @@ src/
       source.ts           ContextSource interface (seam)
       local-fs.ts         dir listing + file read/write
   preload/
-    index.ts              contextBridge
+    preload.ts            contextBridge
     api.d.ts              window.api ambient type
   renderer/
     main.tsx, App.tsx, store.ts, styles.css
