@@ -19,9 +19,15 @@ and branch `v1-archive`.
 - **Validated today**: Linux x64 (dev run + `electron-forge package`).
 - **Not yet validated**: macOS and Windows runtime/packaging on the Forge
   foundation. Expected to work; not exercised.
-- **No automated release workflow**: `.github/workflows/release.yml` was
-  removed because it targeted electron-builder artifacts. Releases are
-  manual (`npm run make`) until a Forge-compatible workflow lands.
+- **CI**: `.github/workflows/ci.yml` runs `npm ci` + `npm run typecheck` +
+  `npx electron-forge package` on every push to `main` and every PR. The
+  linux lane is required; macos and windows lanes are marked exploratory
+  (`continue-on-error: true`) so their failures are visible but do not
+  fail the overall run.
+- **No automated release workflow**: the old `release.yml` targeted
+  electron-builder artifacts and was removed. Releases stay manual
+  (`npm run make`) until a Forge-compatible workflow lands — see
+  `FOLLOWUPS.md`.
 
 See `FOLLOWUPS.md` for short operational items still open.
 

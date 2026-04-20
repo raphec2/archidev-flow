@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    # Linux is the required green path. macOS and Windows are exploratory:
+    # their failures are still visible in the Actions UI but do not fail the
+    # overall run, because those platforms have not been runtime-validated
+    # yet on the Forge foundation.
+    continue-on-error: ${{ matrix.exploratory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux (required)
+            exploratory: false
+          - os: macos-latest
+            label: macos (exploratory)
+            exploratory: true
+          - os: windows-latest
+            label: windows (exploratory)
+            exploratory: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` runs the postinstall hook (scripts/rebuild-native.js), which
+      # rebuilds node-pty against the installed Electron ABI via node-gyp.
+      # This is load-bearing: Forge's own rebuild path is disabled in
+      # forge.config.ts (rebuildConfig.onlyModules: []) because
+      # @electron/rebuild hangs on Linux. Do not skip the postinstall in CI.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # `electron-forge package` produces the unpackaged app directory under
+      # `out/`. We intentionally stop short of `make` (which would produce
+      # platform installers) — Linux validation today covers `package` only,
+      # and extra installer tooling (rpmbuild, codesign, etc.) is out of
+      # scope for this workflow.
+      - name: Package
+        run: npx electron-forge package
+
+      - name: Upload packaged app
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archidev-flow-${{ matrix.os }}
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 7
