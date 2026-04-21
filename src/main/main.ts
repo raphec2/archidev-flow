@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu } from 'electron'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { IPC } from '../shared/ipc'
 import { LocalPtyBackend } from './session/local-pty'
 import { LocalFsWorkspaceStore } from './workspace/local-fs'
@@ -21,6 +21,8 @@ Menu.setApplicationMenu(null)
 // repo. In a packaged app invoked from a project shell, that's the user's
 // current working directory.
 const projectRoot = process.cwd()
+const projectLabel = basename(projectRoot)
+const windowTitle = projectLabel ? `${projectLabel} • ArchiDev-Flow` : 'ArchiDev-Flow'
 
 async function createWindow(): Promise<void> {
   const win = new BrowserWindow({
@@ -29,7 +31,7 @@ async function createWindow(): Promise<void> {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#0b0d10',
-    title: 'ArchiDev-Flow',
+    title: windowTitle,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
@@ -38,6 +40,11 @@ async function createWindow(): Promise<void> {
       sandbox: false
     }
   })
+
+  // The renderer's index.html carries its own <title>, which Electron would
+  // otherwise push back onto the native window and erase the project-scoped
+  // label. Veto the update so the main-derived title sticks.
+  win.on('page-title-updated', (e) => e.preventDefault())
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     await win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
