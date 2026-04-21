@@ -111,7 +111,11 @@ export function TerminalPane({
 
   function pasteIntoTerminal(text: string): void {
     if (!text) return
-    window.api.pty.write(id, text)
+    // Use xterm's paste pipeline, not a raw pty.write: it honors bracketed-paste
+    // (DECSET 2004) when the foreground program supports it, so embedded
+    // newlines arrive as literal input instead of being read as Enter and
+    // firing each line as its own command. Emits one onData → one pty.write.
+    termRef.current?.paste(text)
   }
 
   useEffect(() => {
