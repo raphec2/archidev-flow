@@ -19,12 +19,19 @@ export type IpcDeps = {
   session: SessionBackend
   workspace: WorkspaceStore
   context: ContextSource
+  onCloseResolution: (proceed: boolean) => void
 }
 
 export function registerIpc(deps: IpcDeps): void {
-  const { window, projectRoot, session, workspace, context } = deps
+  const { window, projectRoot, session, workspace, context, onCloseResolution } = deps
 
   ipcMain.handle(IPC.app.getProjectRoot, () => projectRoot)
+
+  // Renderer's answer to a three-way dirty-state prompt run in response to an
+  // `app:requestClose` event. One-way: main does not await a handle result.
+  ipcMain.on(IPC.app.confirmClose, (_e, proceed: boolean) => {
+    onCloseResolution(proceed)
+  })
 
   ipcMain.handle(IPC.config.load, () => workspace.loadOrCreate(projectRoot))
   ipcMain.handle(IPC.config.save, async (_e, cfg: Config) => {

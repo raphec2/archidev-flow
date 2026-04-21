@@ -76,7 +76,32 @@ async function createWindow(): Promise<void> {
   const workspace = new LocalFsWorkspaceStore()
   const context = new LocalFsContextSource()
 
-  registerIpc({ window: win, projectRoot, session, workspace, context })
+  // Three-way unsaved-change coordination on window close. The renderer owns
+  // the per-pane dirty state and the Save / Don't Save / Cancel dialog, so
+  // main vetoes close, asks the renderer to resolve, and only re-issues close
+  // once the renderer reports every dirty pane has been handled. The preload
+  // buffers the request until React mounts, so no timeout is needed; a truly
+  // dead renderer would be stuck regardless.
+  let allowClose = false
+  let closePending = false
+
+  win.on('close', (e) => {
+    if (allowClose) return
+    e.preventDefault()
+    if (closePending) return
+    closePending = true
+    if (!win.isDestroyed()) win.webContents.send(IPC.app.requestClose)
+  })
+
+  const onCloseResolution = (proceed: boolean): void => {
+    if (!closePending) return
+    closePending = false
+    if (!proceed) return
+    allowClose = true
+    if (!win.isDestroyed()) win.close()
+  }
+
+  registerIpc({ window: win, projectRoot, session, workspace, context, onCloseResolution })
 
   // PTY teardown lives only in `window-all-closed` (see below). To access the
   // backend from that handler, stash it on a module-level variable.

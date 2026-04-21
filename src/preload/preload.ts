@@ -16,9 +16,33 @@ import type {
   GitPushResult
 } from '../shared/config'
 
+// A close request that arrives before the renderer has mounted would otherwise
+// be dropped; buffer it here so React can pick it up as soon as it installs
+// the listener. Only one can be in flight — main never sends a second until
+// we reply, and if one is already queued the renderer is about to consume it.
+let closeRequestQueued = false
+let closeRequestListener: (() => void) | null = null
+ipcRenderer.on(IPC.app.requestClose, () => {
+  if (closeRequestListener) closeRequestListener()
+  else closeRequestQueued = true
+})
+
 const api = {
   app: {
-    getProjectRoot: (): Promise<string> => ipcRenderer.invoke(IPC.app.getProjectRoot)
+    getProjectRoot: (): Promise<string> => ipcRenderer.invoke(IPC.app.getProjectRoot),
+    onRequestClose: (listener: () => void): (() => void) => {
+      closeRequestListener = listener
+      if (closeRequestQueued) {
+        closeRequestQueued = false
+        listener()
+      }
+      return () => {
+        if (closeRequestListener === listener) closeRequestListener = null
+      }
+    },
+    respondClose: (proceed: boolean): void => {
+      ipcRenderer.send(IPC.app.confirmClose, proceed)
+    }
   },
   config: {
     load: (): Promise<Config> => ipcRenderer.invoke(IPC.config.load),

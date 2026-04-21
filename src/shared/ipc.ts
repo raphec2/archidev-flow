@@ -2,7 +2,9 @@
 // from here so renaming a channel surfaces in both halves at once.
 export const IPC = {
   app: {
-    getProjectRoot: 'app:getProjectRoot'
+    getProjectRoot: 'app:getProjectRoot',
+    requestClose: 'app:requestClose',
+    confirmClose: 'app:confirmClose'
   },
   config: {
     load: 'config:load',

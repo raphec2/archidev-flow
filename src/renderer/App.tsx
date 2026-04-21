@@ -83,20 +83,41 @@ export default function App(): JSX.Element {
     return () => { cancelled = true }
   }, [setConfig, setProjectRoot])
 
-  // Guard window close when any editor is dirty. Electron fires beforeunload
-  // for reload, close-button, and normal app quit (including Cmd+Q and
-  // app.quit()); cancelling here aborts the quit. Forced app.exit(), crashes,
-  // and OS shutdown/logout bypass beforeunload and remain unprotected.
+  // Quit-time three-way unsaved-change flow. Main vetoes window close and
+  // sends `requestClose`; we walk each dirty pane through the same
+  // Save / Don't Save / Cancel dialog used for switching and closing panes,
+  // then respond once to release or hold the quit.
+  //
+  // - Save: runs the pane's normal save path; a failed save counts as cancel
+  //   so nothing is silently dropped.
+  // - Don't Save: discards for this quit only; buffers aren't rewritten.
+  // - Cancel: we reply `false` and the window stays open with terminals alive.
   useEffect(() => {
-    function onBeforeUnload(e: BeforeUnloadEvent): void {
-      const anyDirty = Array.from(editorRefs.current.values()).some((h) => !!h && h.isDirty())
-      if (anyDirty) {
-        e.preventDefault()
-        e.returnValue = 'You have unsaved editor changes.'
+    const off = window.api.app.onRequestClose(async () => {
+      const ids = Array.from(editorRefs.current.keys())
+      for (const id of ids) {
+        const h = editorRefs.current.get(id)
+        if (!h || !h.isDirty()) continue
+        const label = h.displayName() || id
+        const choice = await window.api.dialog.confirmUnsaved({
+          name: label,
+          action: 'quit ArchiDev-Flow'
+        })
+        if (choice === 'cancel') {
+          window.api.app.respondClose(false)
+          return
+        }
+        if (choice === 'save') {
+          const r = await h.save()
+          if (!r.ok) {
+            window.api.app.respondClose(false)
+            return
+          }
+        }
       }
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+      window.api.app.respondClose(true)
+    })
+    return off
   }, [])
 
   if (!config) {
