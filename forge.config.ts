@@ -15,6 +15,11 @@ const config: ForgeConfig = {
   packagerConfig: {
     appBundleId: 'dev.archidev.flow',
     name: 'ArchiDev-Flow',
+    // Product name stays `ArchiDev-Flow` (.app bundle, DMG, Start Menu label).
+    // The Linux makers (deb, rpm) look up the packaged binary by a lowercased
+    // basename and fail when it mismatches `packagerConfig.name`, so pin the
+    // executable filename explicitly.
+    executableName: 'archidev-flow',
     asar: true,
     // Forge's plugin-vite would otherwise strip everything outside `.vite/`.
     // We keep `node_modules/node-pty` because its native binary (`pty.node`)

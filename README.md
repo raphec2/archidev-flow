@@ -21,14 +21,15 @@ and branch `v1-archive`.
 - **Not yet validated**: macOS and Windows runtime/packaging on the Forge
   foundation. Expected to work; not exercised.
 - **CI**: `.github/workflows/ci.yml` runs `npm ci` + `npm run typecheck` +
-  `npx electron-forge package` on every push to `main` and every PR. The
-  linux lane is required; macos and windows lanes are marked exploratory
+  `npx electron-forge package` on every push to `main` and every PR. It
+  validates the unpackaged `package` output only — it does not run the
+  platform makers and does not build installers. The linux lane is
+  required; macos and windows lanes are marked exploratory
   (`continue-on-error: true`) so their failures are visible but do not
   fail the overall run.
-- **No automated release workflow**: the old `release.yml` targeted
-  electron-builder artifacts and was removed. Releases stay manual
-  (`npm run make`) until a Forge-compatible workflow lands — see
-  `FOLLOWUPS.md`.
+- **Releases**: `.github/workflows/release.yml` runs `npm run make` on
+  Ubuntu and publishes the resulting `.deb` and `.rpm` to a GitHub
+  Release. See [Releases](#releases) below.
 
 See `FOLLOWUPS.md` for short operational items still open.
 
@@ -91,8 +92,53 @@ Artifacts land in `out/`. Forge uses its own makers: Squirrel for Windows,
 DMG + ZIP for macOS, deb + rpm for Linux. `node-pty` is unpacked from the
 asar archive by `@electron-forge/plugin-auto-unpack-natives`.
 
+The Linux makers expect a lowercased executable filename, so
+`packagerConfig.executableName` in `forge.config.ts` pins the binary
+basename to `archidev-flow` while the product name (DMG volume, `.app`
+bundle, Start Menu label) stays `ArchiDev-Flow`.
+
+Running `npm run make` locally exercises every maker configured for the
+current OS. That needs the corresponding system tooling on `$PATH`:
+
+- **Linux deb**: `dpkg`, `fakeroot`
+- **Linux rpm**: `rpmbuild` (Debian/Ubuntu: `sudo apt-get install rpm`;
+  Fedora/RHEL: ships by default)
+- **macOS DMG/ZIP**: Xcode Command Line Tools
+- **Windows Squirrel**: the .NET toolchain Forge pulls in on demand
+
+If a maker's tooling is missing, `npm run make` fails on that maker only.
+Remove the unwanted maker from `forge.config.ts` or install the missing
+tool.
+
 Builds are unsigned — macOS shows "unidentified developer", Windows triggers
 SmartScreen warnings.
+
+## Releases
+
+Installers are produced by `.github/workflows/release.yml`, which runs on
+`ubuntu-latest`, installs `rpm`/`fakeroot`/`dpkg`, runs `npm ci` + `npm run
+typecheck` + `npm run make`, and uploads every `.deb` and `.rpm` under
+`out/make/` to a GitHub Release.
+
+Triggers:
+
+- **Tag push `v*`** (e.g. `v0.1.0`) — creates the release if it does not
+  already exist (`gh release create --generate-notes`) and uploads the
+  Linux installers to it.
+- **`workflow_dispatch`** — runs `npm run make` and uploads the
+  installers as a workflow artifact only. It does not touch any release.
+
+Cutting a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+macOS and Windows installers are not currently published; those platforms
+remain unverified on the Forge foundation. The workflow uses the built-in
+`GITHUB_TOKEN` (granted `contents: write` in `permissions:`) — no custom
+secret is required.
 
 ## Architecture
 
