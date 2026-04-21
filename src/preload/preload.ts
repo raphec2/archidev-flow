@@ -11,7 +11,9 @@ import type {
   DirEntry,
   DetectedTools,
   PtyExitInfo,
-  GitSyncResult
+  GitStatus,
+  GitCommitResult,
+  GitPushResult
 } from '../shared/config'
 
 const api = {
@@ -48,8 +50,16 @@ const api = {
       ipcRenderer.invoke(IPC.fs.write, path, content)
   },
   git: {
-    sync: (cwd: string, message: string): Promise<GitSyncResult> =>
-      ipcRenderer.invoke(IPC.git.sync, cwd, message),
+    status: (cwd: string): Promise<GitStatus> =>
+      ipcRenderer.invoke(IPC.git.status, cwd),
+    commit: (
+      cwd: string,
+      message: string,
+      untrackedPaths: string[] = []
+    ): Promise<GitCommitResult> =>
+      ipcRenderer.invoke(IPC.git.commit, cwd, message, untrackedPaths),
+    push: (cwd: string, opts: { setUpstream?: boolean } = {}): Promise<GitPushResult> =>
+      ipcRenderer.invoke(IPC.git.push, cwd, opts),
     onOutput: (listener: (chunk: string) => void): (() => void) => {
       const wrapped = (_e: unknown, chunk: string): void => listener(chunk)
       ipcRenderer.on(IPC.git.output, wrapped)

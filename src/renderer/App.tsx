@@ -4,9 +4,11 @@ import { useStore } from './store'
 import { TerminalPane } from './components/TerminalPane'
 import { FileTree } from './components/FileTree'
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane'
-import { GitSyncDialog } from './components/GitSyncDialog'
+import { CommitDialog } from './components/CommitDialog'
+import { PushDialog } from './components/PushDialog'
 import { OnboardingDialog } from './components/OnboardingDialog'
-import type { EditorPane as EditorPaneData } from '../shared/config'
+import type { EditorPane as EditorPaneData, GitStatus } from '../shared/config'
+import { useGitStatus } from './use-git-status'
 
 function HSplitHandle(): JSX.Element {
   return <PanelResizeHandle className="hsplit-handle" />
@@ -30,8 +32,11 @@ export default function App(): JSX.Element {
   const setConsultantSelection = useStore((s) => s.setConsultantSelection)
   const setDeveloperSelection = useStore((s) => s.setDeveloperSelection)
 
-  const [showGitDialog, setShowGitDialog] = useState(false)
+  const [gitDialog, setGitDialog] = useState<'commit' | 'push' | null>(null)
   const [notesAppend, setNotesAppend] = useState<{ seq: number; text: string } | null>(null)
+
+  const gitCwd = config?.developer_dir ?? null
+  const { status: gitStatus, refresh: refreshGit } = useGitStatus(gitCwd)
 
   const editorRefs = useRef<Map<string, EditorPaneHandle | null>>(new Map())
   const editorRefCbs = useRef<Map<string, (h: EditorPaneHandle | null) => void>>(new Map())
@@ -182,9 +187,11 @@ export default function App(): JSX.Element {
           <div className="sub">{projectRoot}</div>
         </div>
         <div className="actions">
-          <button onClick={() => setShowGitDialog(true)} title="git add + commit + push">
-            Sync &amp; Push
-          </button>
+          <GitActions
+            status={gitStatus}
+            onOpenCommit={() => setGitDialog('commit')}
+            onOpenPush={() => setGitDialog('push')}
+          />
         </div>
       </div>
 
@@ -323,10 +330,98 @@ export default function App(): JSX.Element {
         </PanelGroup>
       </div>
 
-      {showGitDialog && (
-        <GitSyncDialog cwd={config.developer_dir} onClose={() => setShowGitDialog(false)} />
+      {gitDialog === 'commit' && gitStatus && gitCwd && (
+        <CommitDialog
+          cwd={gitCwd}
+          status={gitStatus}
+          onClose={() => setGitDialog(null)}
+          onCommitted={() => void refreshGit()}
+        />
+      )}
+      {gitDialog === 'push' && gitStatus && gitCwd && (
+        <PushDialog
+          cwd={gitCwd}
+          status={gitStatus}
+          onClose={() => setGitDialog(null)}
+          onPushed={() => void refreshGit()}
+        />
       )}
     </div>
+  )
+}
+
+function GitActions({
+  status,
+  onOpenCommit,
+  onOpenPush
+}: {
+  status: GitStatus | null
+  onOpenCommit: () => void
+  onOpenPush: () => void
+}): JSX.Element {
+  if (!status || !status.isRepo) {
+    return <span className="branch-chip branch-chip-muted" title="Not a git repository">no repo</span>
+  }
+  const hasPending = status.tracked.length > 0 || status.untracked.length > 0
+  const needsPublish = !status.detached && !status.upstream
+  const canPush = !!status.upstream && status.ahead > 0
+  const pushDisabled = status.detached || (!needsPublish && !canPush)
+
+  const branchLabel = status.branch ?? '(unknown)'
+  const pending = status.tracked.length + status.untracked.length
+  const chipTitle = [
+    status.detached ? 'Detached HEAD' : `Branch: ${branchLabel}`,
+    status.upstream ? `Upstream: ${status.upstream}` : 'No upstream',
+    status.upstream ? `Ahead ${status.ahead}, behind ${status.behind}` : null,
+    `Pending: ${pending} file${pending === 1 ? '' : 's'}`
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const pushTitle = status.detached
+    ? 'Cannot push from detached HEAD'
+    : needsPublish
+      ? `Publish to origin/${branchLabel}`
+      : !canPush
+        ? 'Nothing to push'
+        : `Push ${status.ahead} commit${status.ahead === 1 ? '' : 's'} to ${status.upstream}`
+
+  return (
+    <>
+      <span className="branch-chip" title={chipTitle}>
+        <span className="branch-chip-icon" aria-hidden="true">⎇</span>
+        <span className="branch-chip-name">{branchLabel}</span>
+        {status.detached && <span className="branch-chip-tag">detached</span>}
+        {hasPending && <span className="branch-chip-dot" aria-label="pending changes">●</span>}
+        {status.upstream && status.ahead > 0 && (
+          <span className="branch-chip-ahead">↑{status.ahead}</span>
+        )}
+        {status.upstream && status.behind > 0 && (
+          <span className="branch-chip-behind">↓{status.behind}</span>
+        )}
+        {!status.upstream && !status.detached && (
+          <span className="branch-chip-tag">no upstream</span>
+        )}
+      </span>
+      <button
+        onClick={onOpenCommit}
+        disabled={!hasPending}
+        title={
+          hasPending
+            ? `Commit ${pending} file${pending === 1 ? '' : 's'} on ${branchLabel}`
+            : 'No pending changes'
+        }
+      >
+        Commit
+      </button>
+      <button
+        onClick={onOpenPush}
+        disabled={pushDisabled}
+        title={pushTitle}
+      >
+        {needsPublish ? 'Publish' : 'Push'}
+      </button>
+    </>
   )
 }
 

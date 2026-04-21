@@ -22,7 +22,9 @@ export const IPC = {
     write: 'fs:write'
   },
   git: {
-    sync: 'git:sync',
+    status: 'git:status',
+    commit: 'git:commit',
+    push: 'git:push',
     output: 'git:output'
   },
   dialog: {

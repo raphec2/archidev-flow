@@ -346,6 +346,163 @@ input:focus, textarea:focus {
 .status-err { color: var(--danger); }
 .status-warn { color: var(--warn); }
 
+.branch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-0);
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  margin-right: 4px;
+  user-select: text;
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.branch-chip-muted { color: var(--text-2); font-style: italic; }
+.branch-chip-icon { color: var(--accent); font-size: 12px; line-height: 1; }
+.branch-chip-name { font-weight: 600; }
+.branch-chip-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  padding: 0 4px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+.branch-chip-dot { color: var(--warn); font-size: 9px; }
+.branch-chip-ahead { color: var(--success); }
+.branch-chip-behind { color: var(--warn); }
+
+.branch-inline {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.change-list {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-0);
+  max-height: 220px;
+  overflow: auto;
+}
+.change-list-head {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.change-section-label { font-weight: 600; color: var(--text-0); }
+.change-section-count { color: var(--text-2); }
+.change-section-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+}
+.link-button {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.link-button:hover { background: transparent; color: var(--text-0); border-color: transparent; }
+.link-button:disabled { color: var(--text-2); text-decoration: none; cursor: default; }
+.change-list-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-2);
+  font-style: italic;
+}
+.untracked-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+}
+.untracked-row input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.untracked-row:not(.checked) .change-path {
+  color: var(--text-2);
+}
+.tag-untracked.tag-on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.change-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.change-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.change-list li:hover { background: var(--bg-2); }
+.change-tag {
+  display: inline-block;
+  min-width: 18px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  padding: 1px 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-1);
+  background: var(--bg-1);
+}
+.tag-add { color: var(--success); border-color: var(--success); }
+.tag-modify { color: var(--warn); border-color: var(--warn); }
+.tag-delete { color: var(--danger); border-color: var(--danger); }
+.tag-rename { color: var(--accent); border-color: var(--accent); }
+.tag-conflict { color: var(--danger); border-color: var(--danger); font-weight: 700; }
+.tag-untracked { color: var(--text-2); border-color: var(--border-strong); }
+.change-path { color: var(--text-0); overflow: hidden; text-overflow: ellipsis; }
+
+.push-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-0);
+  font-size: 12px;
+}
+.push-summary > div {
+  display: contents;
+}
+.push-label {
+  color: var(--text-2);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--bg-1); }
 ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 10px; }

@@ -40,10 +40,37 @@ export type DetectedTools = {
 
 export type PtyExitInfo = { exitCode: number; signal?: number }
 
-export type GitSyncStep = 'add' | 'commit' | 'push' | 'done'
-export type GitSyncResult = {
+// Raw-ish view of `git status --porcelain=v1 -b`. The renderer derives UI
+// states (pending, can-push, needs-publish) from this rather than hiding them
+// behind IPC surface area.
+export type GitFileChange = {
+  path: string
+  index: string // XY[0] — staged state ('M', 'A', 'D', 'R', 'U', ' ', …)
+  worktree: string // XY[1] — worktree state
+}
+
+export type GitStatus = {
+  isRepo: boolean
+  branch: string | null
+  detached: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  tracked: GitFileChange[]
+  untracked: string[]
+}
+
+export type GitCommitStep = 'add' | 'commit' | 'empty' | 'done'
+export type GitCommitResult = {
   ok: boolean
   code: number
-  step: GitSyncStep
-  output: string
+  step: GitCommitStep
+}
+
+export type GitPushResult = {
+  ok: boolean
+  code: number
+  setUpstream: boolean
+  remote: string
+  branch: string | null
 }

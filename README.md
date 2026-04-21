@@ -6,7 +6,8 @@ lightweight editor — not an IDE.
 - **Left pane**: architect/consultant terminal
 - **Right pane**: developer terminal
 - **Bottom**: Notes + file editor (CodeMirror 6, explicit save)
-- Built-in file explorers and a one-click `git add && commit && push`
+- Built-in file explorers and split `Commit` / `Push` git actions with a
+  live branch chip in the header
 
 Local-only. No cloud, no auth, no telemetry, no plugin system.
 
@@ -74,7 +75,7 @@ src/
     main.ts               app lifecycle, createWindow
     ipc.ts                IPC wiring
     detect.ts             claude/codex on PATH
-    git.ts                git add/commit/push runner
+    git.ts                git status + commit + push runners (separate IPC)
     session/
       backend.ts          SessionBackend interface (seam)
       local-pty.ts        node-pty implementation
@@ -89,7 +90,7 @@ src/
     api.d.ts              window.api ambient type
   renderer/
     main.tsx, App.tsx, store.ts, styles.css
-    components/{TerminalPane,EditorPane,FileTree,GitSyncDialog,OnboardingDialog}.tsx
+    components/{TerminalPane,EditorPane,FileTree,CommitDialog,PushDialog,OnboardingDialog}.tsx
   shared/
     config.ts, ipc.ts
 ```
@@ -126,6 +127,25 @@ close (destroys `consultantFile` pane), and window unload / app quit.
 
 Layout and workspace metadata autosave debounced — that is low-risk and
 matches v1 behaviour.
+
+## Git workflow
+
+Git actions are split into `Commit` and `Push`:
+
+- The header carries a live branch chip showing the current branch, upstream
+  (if any), ahead/behind counts, and pending-change indicator. It polls while
+  the window is visible and refreshes on focus.
+- `Commit` opens a review dialog that lists tracked changes (included by
+  default) and untracked files (opt-in per file). On confirm it stages tracked
+  changes with `git add -u` and any selected untracked paths with
+  `git add -- <paths>`, then runs `git commit -m <msg>`. The message is drafted
+  from the current commit scope (`update: a.ts, b.ts`) and stays editable. No
+  auto-push.
+- `Push` opens a dialog that spells out the destination (`origin/<branch>`).
+  On a branch without an upstream the action switches to `Publish`, running
+  `git push -u origin <branch>`.
+- Commits and pushes never happen implicitly; both require explicit
+  confirmation in their dialog.
 
 ## Session lifecycle
 

@@ -10,7 +10,7 @@ import type { Config } from '../shared/config'
 import type { SessionBackend } from './session/backend'
 import type { WorkspaceStore } from './workspace/store'
 import type { ContextSource } from './context/source'
-import { runGitSync } from './git'
+import { getGitStatus, runCommit, runPush } from './git'
 import { detectTools } from './detect'
 
 export type IpcDeps = {
@@ -55,14 +55,23 @@ export function registerIpc(deps: IpcDeps): void {
     context.write(path, content)
   )
 
-  ipcMain.handle(IPC.git.sync, async (_e, cwd: string, message: string) => {
-    const chunks: string[] = []
-    const result = await runGitSync(cwd, message, (chunk) => {
-      chunks.push(chunk)
-      if (!window.isDestroyed()) window.webContents.send(IPC.git.output, chunk)
-    })
-    return { ...result, output: chunks.join('') }
-  })
+  ipcMain.handle(IPC.git.status, (_e, cwd: string) => getGitStatus(cwd))
+
+  ipcMain.handle(
+    IPC.git.commit,
+    (_e, cwd: string, message: string, untrackedPaths: string[] = []) =>
+      runCommit(cwd, message, untrackedPaths, (chunk) => {
+        if (!window.isDestroyed()) window.webContents.send(IPC.git.output, chunk)
+      })
+  )
+
+  ipcMain.handle(
+    IPC.git.push,
+    (_e, cwd: string, opts: { setUpstream?: boolean } = {}) =>
+      runPush(cwd, opts, (chunk) => {
+        if (!window.isDestroyed()) window.webContents.send(IPC.git.output, chunk)
+      })
+  )
 
   ipcMain.handle(IPC.dialog.pickDirectory, async () => {
     const r = await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
