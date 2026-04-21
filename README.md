@@ -40,6 +40,33 @@ See `FOLLOWUPS.md` for short operational items still open.
   - **Linux**: `build-essential`, `python3`
   - **Windows**: Python 3 + Visual Studio Build Tools
 
+## Launching against a project
+
+The app is workspace-scoped: every workspace (per-workspace config, notes,
+default pane cwds) is keyed from the project root the app was launched
+against. The launch root is resolved in `src/main/main.ts` with this order:
+
+1. First positional CLI argument, if it resolves to an existing directory.
+2. `process.cwd()`, if that is a real, non-filesystem-root directory.
+3. `os.homedir()` as a neutral fallback.
+
+Expected invocations:
+
+```bash
+# From a project shell (dev or installed CLI entry):
+archidev-flow .                  # explicit — preserves prior cwd-driven behaviour
+archidev-flow /path/to/project   # explicit positional argument
+cd /path/to/project && archidev-flow
+```
+
+Desktop-launcher starts (macOS Finder/Dock, Linux `.desktop`, Windows
+Start Menu / shortcut) supply no argument and no meaningful cwd. The app
+opens against the home directory in that case; pick the consultant /
+developer directories through onboarding. If an argument is supplied but
+is not an existing directory, the app shows a native error dialog and
+opens against the fallback instead of using the bad path as a workspace
+key.
+
 ## Dev
 
 ```bash

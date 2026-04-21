@@ -1,5 +1,7 @@
-import { app, BrowserWindow, Menu } from 'electron'
-import { basename, join } from 'path'
+import { app, BrowserWindow, dialog, Menu } from 'electron'
+import { statSync } from 'fs'
+import { homedir } from 'os'
+import { basename, dirname, join, resolve } from 'path'
 import { IPC } from '../shared/ipc'
 import { LocalPtyBackend } from './session/local-pty'
 import { LocalFsWorkspaceStore } from './workspace/local-fs'
@@ -17,10 +19,64 @@ declare const MAIN_WINDOW_VITE_NAME: string
 // bumping into.
 Menu.setApplicationMenu(null)
 
-// Project root is the directory the user launched from. In dev, that's this
-// repo. In a packaged app invoked from a project shell, that's the user's
-// current working directory.
-const projectRoot = process.cwd()
+type LaunchRoot = {
+  root: string
+  invalidArgument: string | null
+}
+
+// The project root is what every workspace-keyed thing (per-workspace config,
+// notes, default pane cwds) hangs off. Resolution order:
+//   1. first positional CLI argument, if it resolves to an existing directory
+//   2. process.cwd(), if it is a real, non-filesystem-root directory
+//   3. os.homedir() as a neutral, user-owned fallback
+// The homedir fallback matters for installed-app launches (Finder, Dock,
+// Start Menu, .desktop) where cwd is routinely `/` or a system path we do
+// not want to pollute workspace storage with.
+function firstPositionalArg(argv: string[], startAt: number): string | null {
+  for (let i = startAt; i < argv.length; i++) {
+    const a = argv[i]
+    if (!a) continue
+    if (a === '--') return argv[i + 1] ?? null
+    if (a.startsWith('-')) continue
+    return a
+  }
+  return null
+}
+
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function neutralFallbackRoot(): string {
+  const cwd = process.cwd()
+  // dirname(p) === p is true only at a filesystem root ('/' on POSIX,
+  // 'C:\\' etc. on Windows). Treat those as "no meaningful cwd".
+  if (cwd && dirname(cwd) !== cwd && isDirectory(cwd)) return resolve(cwd)
+  return homedir()
+}
+
+function resolveLaunchRoot(): LaunchRoot {
+  // Electron argv shape:
+  //   packaged   -> [exePath, ...userArgs]
+  //   dev (Forge)-> [electron, appPath, ...userArgs]
+  const argvStart = app.isPackaged ? 1 : 2
+  const positional = firstPositionalArg(process.argv, argvStart)
+
+  if (positional) {
+    const abs = resolve(process.cwd(), positional)
+    if (isDirectory(abs)) return { root: abs, invalidArgument: null }
+    return { root: neutralFallbackRoot(), invalidArgument: positional }
+  }
+
+  return { root: neutralFallbackRoot(), invalidArgument: null }
+}
+
+const launch = resolveLaunchRoot()
+const projectRoot = launch.root
 const projectLabel = basename(projectRoot)
 const windowTitle = projectLabel ? `${projectLabel} • ArchiDev-Flow` : 'ArchiDev-Flow'
 
@@ -117,7 +173,18 @@ async function createWindow(): Promise<void> {
 
 let closeSession: (() => void) | null = null
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  if (launch.invalidArgument !== null) {
+    // Surface the rejected path non-silently. We do not use the argument as-is;
+    // the app opens against `launch.root` (cwd or homedir) instead.
+    dialog.showErrorBox(
+      'ArchiDev-Flow',
+      `Ignoring launch argument "${launch.invalidArgument}": not an existing directory.\n` +
+        `Opening against ${projectRoot} instead.`
+    )
+  }
+  return createWindow()
+})
 
 // PTY teardown lives only here (and not in `before-quit`) because `before-quit`
 // fires before the renderer's `beforeunload` can veto the quit for unsaved
