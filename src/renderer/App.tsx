@@ -227,111 +227,115 @@ export default function App(): JSX.Element {
               onLayout={(sizes) => setLayout({ topHorizontal: [sizes[0], sizes[1]] })}
             >
               <Panel defaultSize={config.layout.topHorizontal[0]} minSize={20}>
-                {config.consultantExplorerVisible ? (
-                  <PanelGroup
-                    direction="horizontal"
-                    onLayout={(sizes) => setLayout({ consultantInner: [sizes[0], sizes[1]] })}
-                  >
-                    <Panel defaultSize={config.layout.consultantInner[0]} minSize={10}>
-                      <FileTree
-                        root={config.consultant_dir}
-                        label="Consultant Files"
-                        onOpenFile={openFileInConsultantPane}
-                      />
-                    </Panel>
-                    <HSplitHandle />
-                    <Panel defaultSize={config.layout.consultantInner[1]} minSize={20}>
-                      <TerminalPane
-                        id="consultant"
-                        label="Consultant"
-                        cwd={config.consultant_dir}
-                        command={config.consultant_tool}
-                        onSelectionChange={setConsultantSelection}
-                        onSendToOther={() => sendTerminalToOther('consultant')}
-                        onSendToNotes={() => sendTerminalToNotes('consultant')}
-                        leadingTool={
-                          <ExplorerToggleButton
-                            side="consultant"
-                            visible={true}
-                            onClick={() => void toggleConsultantExplorer()}
-                          />
-                        }
-                      />
-                    </Panel>
-                  </PanelGroup>
-                ) : (
-                  <TerminalPane
-                    id="consultant"
-                    label="Consultant"
-                    cwd={config.consultant_dir}
-                    command={config.consultant_tool}
-                    onSelectionChange={setConsultantSelection}
-                    onSendToOther={() => sendTerminalToOther('consultant')}
-                    onSendToNotes={() => sendTerminalToNotes('consultant')}
-                    leadingTool={
-                      <ExplorerToggleButton
-                        side="consultant"
-                        visible={false}
-                        onClick={() => void toggleConsultantExplorer()}
-                      />
+                <PanelGroup
+                  key="consultant-inner"
+                  direction="horizontal"
+                  onLayout={(sizes) => {
+                    if (sizes.length === 2) setLayout({ consultantInner: [sizes[0], sizes[1]] })
+                  }}
+                >
+                  {config.consultantExplorerVisible && (
+                    <>
+                      <Panel
+                        key="consultant-explorer"
+                        id="consultant-explorer"
+                        order={1}
+                        defaultSize={config.layout.consultantInner[0]}
+                        minSize={10}
+                      >
+                        <FileTree
+                          root={config.consultant_dir}
+                          label="Consultant Files"
+                          onOpenFile={openFileInConsultantPane}
+                        />
+                      </Panel>
+                      <HSplitHandle />
+                    </>
+                  )}
+                  <Panel
+                    key="consultant-terminal"
+                    id="consultant-terminal"
+                    order={2}
+                    defaultSize={
+                      config.consultantExplorerVisible ? config.layout.consultantInner[1] : 100
                     }
-                  />
-                )}
+                    minSize={20}
+                  >
+                    <TerminalPane
+                      id="consultant"
+                      label="Consultant"
+                      cwd={config.consultant_dir}
+                      command={config.consultant_tool}
+                      onSelectionChange={setConsultantSelection}
+                      onSendToOther={() => sendTerminalToOther('consultant')}
+                      onSendToNotes={() => sendTerminalToNotes('consultant')}
+                      leadingTool={
+                        <ExplorerToggleButton
+                          side="consultant"
+                          visible={config.consultantExplorerVisible}
+                          onClick={() => void toggleConsultantExplorer()}
+                        />
+                      }
+                    />
+                  </Panel>
+                </PanelGroup>
               </Panel>
 
               <HSplitHandle />
 
               <Panel defaultSize={config.layout.topHorizontal[1]} minSize={20}>
-                {config.developerExplorerVisible ? (
-                  <PanelGroup
-                    direction="horizontal"
-                    onLayout={(sizes) => setLayout({ developerInner: [sizes[0], sizes[1]] })}
-                  >
-                    <Panel defaultSize={config.layout.developerInner[0]} minSize={10}>
-                      <FileTree
-                        root={config.developer_dir}
-                        label="Project Files"
-                        onOpenFile={openFileInDeveloperPane}
-                      />
-                    </Panel>
-                    <HSplitHandle />
-                    <Panel defaultSize={config.layout.developerInner[1]} minSize={20}>
-                      <TerminalPane
-                        id="developer"
-                        label="Developer"
-                        cwd={config.developer_dir}
-                        command={config.developer_tool}
-                        onSelectionChange={setDeveloperSelection}
-                        onSendToOther={() => sendTerminalToOther('developer')}
-                        onSendToNotes={() => sendTerminalToNotes('developer')}
-                        leadingTool={
-                          <ExplorerToggleButton
-                            side="developer"
-                            visible={true}
-                            onClick={toggleDeveloperExplorer}
-                          />
-                        }
-                      />
-                    </Panel>
-                  </PanelGroup>
-                ) : (
-                  <TerminalPane
-                    id="developer"
-                    label="Developer"
-                    cwd={config.developer_dir}
-                    command={config.developer_tool}
-                    onSelectionChange={setDeveloperSelection}
-                    onSendToOther={() => sendTerminalToOther('developer')}
-                    onSendToNotes={() => sendTerminalToNotes('developer')}
-                    leadingTool={
-                      <ExplorerToggleButton
-                        side="developer"
-                        visible={false}
-                        onClick={toggleDeveloperExplorer}
-                      />
+                <PanelGroup
+                  key="developer-inner"
+                  direction="horizontal"
+                  onLayout={(sizes) => {
+                    if (sizes.length === 2) setLayout({ developerInner: [sizes[0], sizes[1]] })
+                  }}
+                >
+                  {config.developerExplorerVisible && (
+                    <>
+                      <Panel
+                        key="developer-explorer"
+                        id="developer-explorer"
+                        order={1}
+                        defaultSize={config.layout.developerInner[0]}
+                        minSize={10}
+                      >
+                        <FileTree
+                          root={config.developer_dir}
+                          label="Project Files"
+                          onOpenFile={openFileInDeveloperPane}
+                        />
+                      </Panel>
+                      <HSplitHandle />
+                    </>
+                  )}
+                  <Panel
+                    key="developer-terminal"
+                    id="developer-terminal"
+                    order={2}
+                    defaultSize={
+                      config.developerExplorerVisible ? config.layout.developerInner[1] : 100
                     }
-                  />
-                )}
+                    minSize={20}
+                  >
+                    <TerminalPane
+                      id="developer"
+                      label="Developer"
+                      cwd={config.developer_dir}
+                      command={config.developer_tool}
+                      onSelectionChange={setDeveloperSelection}
+                      onSendToOther={() => sendTerminalToOther('developer')}
+                      onSendToNotes={() => sendTerminalToNotes('developer')}
+                      leadingTool={
+                        <ExplorerToggleButton
+                          side="developer"
+                          visible={config.developerExplorerVisible}
+                          onClick={toggleDeveloperExplorer}
+                        />
+                      }
+                    />
+                  </Panel>
+                </PanelGroup>
               </Panel>
             </PanelGroup>
           </Panel>

@@ -1,6 +1,6 @@
 {
   "name": "archidev-flow",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Local desktop workspace for a dual-AI CLI workflow",
   "main": ".vite/build/main.js",
   "author": "raphec",
@@ -8,7 +8,11 @@
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
+    "package:patch": "npm version patch --no-git-tag-version && electron-forge package",
+    "package:minor": "npm version minor --no-git-tag-version && electron-forge package",
     "make": "electron-forge make",
+    "make:patch": "npm version patch --no-git-tag-version && electron-forge make",
+    "make:minor": "npm version minor --no-git-tag-version && electron-forge make",
     "publish": "electron-forge publish",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
