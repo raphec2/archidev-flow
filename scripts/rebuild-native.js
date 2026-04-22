@@ -77,17 +77,22 @@ function rebuild(moduleName) {
     console.log(`[rebuild-native] ${moduleName} not found — skipping`)
     return
   }
-  const nodeGyp = join(
-    projectRoot,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp'
-  )
-  if (!existsSync(nodeGyp)) throw new Error('[rebuild-native] node-gyp not installed')
+  // Spawn node-gyp's JS entrypoint with the current node binary. The `.bin`
+  // shim (`node-gyp.cmd` on Windows) can't be launched by spawnSync under
+  // Node's CVE-2024-27980 hardening without `shell: true`, which brings argv
+  // injection risk. Going through the JS entrypoint behaves the same on all
+  // platforms and avoids shell quoting entirely.
+  let nodeGypJs
+  try {
+    nodeGypJs = require.resolve('node-gyp/bin/node-gyp.js')
+  } catch {
+    throw new Error('[rebuild-native] node-gyp not installed')
+  }
   console.log(`[rebuild-native] rebuilding ${moduleName} for electron@${electronVersion} (${arch})`)
   const result = spawnSync(
-    nodeGyp,
+    process.execPath,
     [
+      nodeGypJs,
       'rebuild',
       `--target=${electronVersion}`,
       `--arch=${arch}`,
@@ -96,6 +101,11 @@ function rebuild(moduleName) {
     ],
     { cwd: moduleDir, stdio: 'inherit', env: process.env }
   )
+  if (result.error) {
+    throw new Error(
+      `[rebuild-native] ${moduleName} rebuild failed to launch: ${result.error.message}`
+    )
+  }
   if (result.status !== 0) {
     throw new Error(`[rebuild-native] ${moduleName} rebuild exited ${result.status}`)
   }
