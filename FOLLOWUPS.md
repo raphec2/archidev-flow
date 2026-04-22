@@ -4,10 +4,6 @@ Short operational items left open from the `v1x` rewrite promotion. Delete
 an entry once it is resolved; keep this file focused on things that would
 bite a future reader.
 
-- **Forge-compatible release workflow.** Replace the removed
-  `.github/workflows/release.yml` with one that runs `npm run make` per OS
-  and publishes a GitHub Release. Until then, releases are manual.
-
 - **Native rebuild / package guard.** `scripts/rebuild-native.js`
   (postinstall) is the only path that rebuilds `node-pty` against the
   correct Electron ABI — Forge's own rebuild is disabled
