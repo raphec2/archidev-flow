@@ -30,15 +30,17 @@ const electronVersion = JSON.parse(readFileSync(electronPkgPath, 'utf-8')).versi
 const arch = process.env.npm_config_arch || process.arch
 const nodedir = join(os.homedir(), '.electron-gyp', electronVersion)
 
-function ensureHeaders() {
+async function ensureHeaders() {
   const markerFile = join(nodedir, 'installVersion')
   const includeDir = join(nodedir, 'include', 'node')
-  if (existsSync(markerFile) && existsSync(includeDir)) return Promise.resolve()
-  mkdirSync(nodedir, { recursive: true })
-  const url = `https://electronjs.org/headers/v${electronVersion}/node-v${electronVersion}-headers.tar.gz`
-  console.log(`[rebuild-native] fetching headers: ${url}`)
-  const tarballPath = join(nodedir, 'headers.tar.gz')
-  return downloadTo(url, tarballPath).then(() => {
+  const needHeaders = !(existsSync(markerFile) && existsSync(includeDir))
+
+  if (needHeaders) {
+    mkdirSync(nodedir, { recursive: true })
+    const url = `https://electronjs.org/headers/v${electronVersion}/node-v${electronVersion}-headers.tar.gz`
+    console.log(`[rebuild-native] fetching headers: ${url}`)
+    const tarballPath = join(nodedir, 'headers.tar.gz')
+    await downloadTo(url, tarballPath)
     const extract = spawnSync(
       'tar',
       ['-xzf', tarballPath, '--strip-components=1', '-C', nodedir],
@@ -46,7 +48,19 @@ function ensureHeaders() {
     )
     if (extract.status !== 0) throw new Error('[rebuild-native] failed to extract headers')
     writeFileSync(markerFile, '9\n')
-  })
+  }
+
+  // Windows links against node.lib (not in the headers tarball); Electron's common.gypi expects it at $NODEDIR/Release/node.lib.
+  if (process.platform === 'win32') {
+    const libDir = join(nodedir, 'Release')
+    const libPath = join(libDir, 'node.lib')
+    if (!existsSync(libPath)) {
+      mkdirSync(libDir, { recursive: true })
+      const libUrl = `https://electronjs.org/headers/v${electronVersion}/win-${arch}/node.lib`
+      console.log(`[rebuild-native] fetching node.lib: ${libUrl}`)
+      await downloadTo(libUrl, libPath)
+    }
+  }
 }
 
 function downloadTo(url, dest) {
