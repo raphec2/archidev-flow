@@ -213,6 +213,14 @@ input:focus, textarea:focus {
   padding: 1px 6px;
   font-size: 11px;
 }
+.pane-header .toolbar .sort-select {
+  padding: 1px 4px;
+  font-size: 11px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
 .pane-header .dirty-dot {
   color: var(--warn);
   font-size: 10px;

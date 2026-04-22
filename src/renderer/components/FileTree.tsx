@@ -1,10 +1,42 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { DirEntry } from '../../shared/config'
 
 type Node = DirEntry & {
   children?: Node[]
   expanded?: boolean
   loaded?: boolean
+}
+
+type SortMode = 'name-asc' | 'name-desc' | 'mtime-desc' | 'mtime-asc'
+
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'name-asc', label: 'Name ↑' },
+  { value: 'name-desc', label: 'Name ↓' },
+  { value: 'mtime-desc', label: 'Modified ↓' },
+  { value: 'mtime-asc', label: 'Modified ↑' }
+]
+
+// Folders always precede files; `mode` orders within each partition, with name
+// as a stable tiebreaker for equal mtimes.
+function sortNodes<T extends DirEntry>(nodes: T[], mode: SortMode): T[] {
+  const dirs: T[] = []
+  const files: T[] = []
+  for (const n of nodes) (n.isDir ? dirs : files).push(n)
+  const cmp = (a: T, b: T): number => {
+    switch (mode) {
+      case 'name-asc':
+        return a.name.localeCompare(b.name)
+      case 'name-desc':
+        return b.name.localeCompare(a.name)
+      case 'mtime-desc':
+        return b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name)
+      case 'mtime-asc':
+        return a.mtimeMs - b.mtimeMs || a.name.localeCompare(b.name)
+    }
+  }
+  dirs.sort(cmp)
+  files.sort(cmp)
+  return [...dirs, ...files]
 }
 
 type Props = {
@@ -17,6 +49,7 @@ export function FileTree({ root, label, onOpenFile }: Props): JSX.Element {
   const [tree, setTree] = useState<Node[]>([])
   const [selected, setSelected] = useState<string>('')
   const [error, setError] = useState<string>('')
+  const [sortMode, setSortMode] = useState<SortMode>('name-asc')
 
   const loadRoot = useCallback(async (): Promise<void> => {
     setError('')
@@ -72,6 +105,14 @@ export function FileTree({ root, label, onOpenFile }: Props): JSX.Element {
     }
   }
 
+  const sortedTree = useMemo(() => {
+    const sortDeep = (nodes: Node[]): Node[] =>
+      sortNodes(nodes, sortMode).map((n) =>
+        n.children ? { ...n, children: sortDeep(n.children) } : n
+      )
+    return sortDeep(tree)
+  }, [tree, sortMode])
+
   function renderNodes(nodes: Node[], depth: number): JSX.Element[] {
     const out: JSX.Element[] = []
     for (const n of nodes) {
@@ -103,12 +144,23 @@ export function FileTree({ root, label, onOpenFile }: Props): JSX.Element {
           <span className="path" title={root}>{root}</span>
         </div>
         <div className="toolbar">
+          <select
+            className="sort-select"
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            title="Sort order"
+            aria-label="Sort order"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
           <button onClick={loadRoot} title="Refresh">↻</button>
         </div>
       </div>
       <div className="tree" tabIndex={0}>
         {error && <div className="tree-item status-err" style={{ paddingLeft: 8 }}>{error}</div>}
-        {renderNodes(tree, 0)}
+        {renderNodes(sortedTree, 0)}
       </div>
     </div>
   )

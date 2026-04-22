@@ -17,6 +17,7 @@ export type DirEntry = {
   name: string
   path: string
   isDir: boolean
+  mtimeMs: number
 }
 
 export type Config = {
