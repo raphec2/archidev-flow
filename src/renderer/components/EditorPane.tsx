@@ -19,10 +19,11 @@ type Props = {
   onRename: (name: string) => void
   onChangeNotesPath?: (newPath: string) => void
   externalAppend?: { seq: number; text: string } | null
+  onPasteToTerminal?: (target: 'consultant' | 'developer', text: string) => void
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPane(
-  { pane, onRename, onChangeNotesPath, externalAppend },
+  { pane, onRename, onChangeNotesPath, externalAppend, onPasteToTerminal },
   ref
 ): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -31,6 +32,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
   const [loadedPath, setLoadedPath] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
   const [dirty, setDirty] = useState<boolean>(false)
+  const [hasSelection, setHasSelection] = useState<boolean>(false)
   const dirtyRef = useRef<boolean>(false)
   const paneRef = useRef(pane)
   paneRef.current = pane
@@ -64,6 +66,21 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     const target = paneRef.current.filePath
     if (!target) return { ok: false, error: 'no file to save' }
     return writeTo(target)
+  }
+
+  function getSelectionText(): string {
+    const view = viewRef.current
+    if (!view) return ''
+    const { from, to } = view.state.selection.main
+    if (from === to) return ''
+    return view.state.sliceDoc(from, to)
+  }
+
+  function handlePasteToTerminal(target: 'consultant' | 'developer'): void {
+    if (!onPasteToTerminal) return
+    const text = getSelectionText()
+    if (!text) return
+    onPasteToTerminal(target, text)
   }
 
   useImperativeHandle(ref, () => ({
@@ -112,6 +129,9 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
         readOnlyComp.current.of(EditorState.readOnly.of(false)),
         EditorView.updateListener.of((v) => {
           if (v.docChanged) markDirty(true)
+          if (v.selectionSet || v.docChanged) {
+            setHasSelection(!v.state.selection.main.empty)
+          }
         })
       ]
     })
@@ -193,6 +213,32 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
         </div>
         <div className="toolbar">
           {status && <span style={{ color: 'var(--text-2)', fontSize: 11 }}>{status}</span>}
+          {onPasteToTerminal && (
+            <>
+              <button
+                onClick={() => handlePasteToTerminal('consultant')}
+                disabled={!hasSelection}
+                title={
+                  hasSelection
+                    ? 'Paste selection into Consultant (left) terminal'
+                    : 'Select text to paste into Consultant (left) terminal'
+                }
+              >
+                → Left
+              </button>
+              <button
+                onClick={() => handlePasteToTerminal('developer')}
+                disabled={!hasSelection}
+                title={
+                  hasSelection
+                    ? 'Paste selection into Developer (right) terminal'
+                    : 'Select text to paste into Developer (right) terminal'
+                }
+              >
+                → Right
+              </button>
+            </>
+          )}
           {pane.isNotes && onChangeNotesPath && (
             <button
               onClick={() => void handleChangeNotesPath()}

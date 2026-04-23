@@ -124,6 +124,10 @@ export function TerminalPane({
     const handler = (e: Event): void => {
       const ce = e as CustomEvent<string>
       pasteIntoTerminal(ce.detail)
+      // Hand keyboard focus to this terminal so the next Enter/keystroke
+      // acts where the pasted text landed. Shared by terminal-to-terminal
+      // transfer and editor paste-to-left/right actions.
+      termRef.current?.focus()
     }
     host.addEventListener('archidev:paste', handler as EventListener)
     return () => host.removeEventListener('archidev:paste', handler as EventListener)

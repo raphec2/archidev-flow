@@ -184,14 +184,21 @@ export default function App(): JSX.Element {
     )
   }
 
+  function pasteToTerminal(target: 'consultant' | 'developer', text: string): void {
+    if (!text) return
+    const host = document.querySelector(`[data-terminal-id="${target}"] .xterm-host`)
+    if (host) {
+      // TerminalPane's own archidev:paste handler performs the xterm paste and
+      // focuses the destination terminal, so this call intentionally does not
+      // duplicate either concern.
+      host.dispatchEvent(new CustomEvent('archidev:paste', { detail: text }))
+    }
+  }
+
   function sendTerminalToOther(sourceId: 'consultant' | 'developer'): void {
     const text = sourceId === 'consultant' ? consultantSelection : developerSelection
     if (!text) return
-    const targetAttr = sourceId === 'consultant' ? 'developer' : 'consultant'
-    const host = document.querySelector(`[data-terminal-id="${targetAttr}"] .xterm-host`)
-    if (host) {
-      host.dispatchEvent(new CustomEvent('archidev:paste', { detail: text }))
-    }
+    pasteToTerminal(sourceId === 'consultant' ? 'developer' : 'consultant', text)
   }
 
   function sendTerminalToNotes(sourceId: 'consultant' | 'developer'): void {
@@ -399,6 +406,7 @@ export default function App(): JSX.Element {
               notesAppend={notesAppend}
               registerEditor={registerEditor}
               onChangeNotesPath={changeNotesPath}
+              onPasteToTerminal={pasteToTerminal}
             />
           </Panel>
         </PanelGroup>
@@ -505,7 +513,8 @@ function BottomEditors({
   onLayout,
   notesAppend,
   registerEditor,
-  onChangeNotesPath
+  onChangeNotesPath,
+  onPasteToTerminal
 }: {
   panes: EditorPaneData[]
   initialSizes: number[]
@@ -513,6 +522,7 @@ function BottomEditors({
   notesAppend: { seq: number; text: string } | null
   registerEditor: (id: string) => (h: EditorPaneHandle | null) => void
   onChangeNotesPath: (newPath: string) => void
+  onPasteToTerminal: (target: 'consultant' | 'developer', text: string) => void
 }): JSX.Element {
   const setEditorPane = useStore((s) => s.setEditorPane)
   const config = useStore((s) => s.config)!
@@ -541,6 +551,7 @@ function BottomEditors({
             onRename={(name) => setEditorPane(pane.id, { name })}
             onChangeNotesPath={pane.isNotes ? onChangeNotesPath : undefined}
             externalAppend={pane.isNotes ? notesAppend : null}
+            onPasteToTerminal={onPasteToTerminal}
           />
         </PaneWithHandle>
       ))}
