@@ -155,7 +155,12 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           # MakerDeb → out/make/deb/<arch>/*.deb
           # MakerRpm → out/make/rpm/<arch>/*.rpm
-          mapfile -t ASSETS < <(find out/make -type f \( -name '*.deb' -o -name '*.rpm' \))
+          # Collected via a `while read` loop (instead of `mapfile -t`) because
+          # the macOS runner ships Bash 3.2, where `mapfile` is unavailable.
+          ASSETS=()
+          while IFS= read -r asset; do
+            ASSETS+=("$asset")
+          done < <(find out/make -type f \( -name '*.deb' -o -name '*.rpm' \))
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No .deb or .rpm artifacts found under out/make" >&2
             exit 1
@@ -173,7 +178,12 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           # MakerDMG → out/make/*.dmg
           # MakerZIP (darwin target) → out/make/zip/darwin/<arch>/*.zip
-          mapfile -t ASSETS < <(find out/make -type f \( -name '*.dmg' -o -name '*.zip' \))
+          # Collected via a `while read` loop (instead of `mapfile -t`) because
+          # the macOS runner ships Bash 3.2, where `mapfile` is unavailable.
+          ASSETS=()
+          while IFS= read -r asset; do
+            ASSETS+=("$asset")
+          done < <(find out/make -type f \( -name '*.dmg' -o -name '*.zip' \))
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No .dmg or .zip artifacts found under out/make" >&2
             exit 1
@@ -194,7 +204,14 @@ jobs:
           # The RELEASES file is needed for Squirrel auto-update feeds; we
           # leave it out of the Release for now since no auto-update feed is
           # configured. Users install via the Setup .exe.
-          mapfile -t ASSETS < <(find out/make -type f \( -name '*.exe' -o -name '*.nupkg' \))
+          # Collected via a `while read` loop (instead of `mapfile -t`) for
+          # parity with the other platforms, where Bash 3.2 (macOS) lacks
+          # `mapfile`. Windows uses the bundled Git Bash, but we keep the
+          # three blocks shaped the same way.
+          ASSETS=()
+          while IFS= read -r asset; do
+            ASSETS+=("$asset")
+          done < <(find out/make -type f \( -name '*.exe' -o -name '*.nupkg' \))
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No .exe or .nupkg artifacts found under out/make" >&2
             exit 1
