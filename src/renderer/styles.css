@@ -96,6 +96,12 @@ input:focus, textarea:focus {
   cursor: col-resize;
 }
 .hsplit-handle:hover { background: var(--accent-dim); }
+.hsplit-handle-hidden {
+  width: 0;
+  border-left: 0;
+  border-right: 0;
+  pointer-events: none;
+}
 
 .pane {
   display: flex;

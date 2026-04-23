@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  type ImperativePanelHandle
+} from 'react-resizable-panels'
 import { useStore } from './store'
 import { TerminalPane } from './components/TerminalPane'
 import { FileTree } from './components/FileTree'
@@ -40,6 +45,13 @@ export default function App(): JSX.Element {
 
   const editorRefs = useRef<Map<string, EditorPaneHandle | null>>(new Map())
   const editorRefCbs = useRef<Map<string, (h: EditorPaneHandle | null) => void>>(new Map())
+
+  // Explorer panels stay mounted across visibility changes so the sibling
+  // terminal Panel is never unregistered from react-resizable-panels (which
+  // would unmount TerminalPane and kill its PTY). Visibility is applied via
+  // the panel's own collapse/expand API instead of JSX membership.
+  const consultantExplorerRef = useRef<ImperativePanelHandle | null>(null)
+  const developerExplorerRef = useRef<ImperativePanelHandle | null>(null)
 
   function registerEditor(id: string): (h: EditorPaneHandle | null) => void {
     let cb = editorRefCbs.current.get(id)
@@ -82,6 +94,24 @@ export default function App(): JSX.Element {
       })
     return () => { cancelled = true }
   }, [setConfig, setProjectRoot])
+
+  // Drive explorer collapse state from the store without re-rendering
+  // PanelGroup children. The visible state is the source of truth; the panel
+  // ref is the effector. Guards against no-op expand/collapse loops.
+  const consultantExplorerVisible = config?.consultantExplorerVisible
+  const developerExplorerVisible = config?.developerExplorerVisible
+  useEffect(() => {
+    const panel = consultantExplorerRef.current
+    if (!panel || consultantExplorerVisible === undefined) return
+    if (consultantExplorerVisible && panel.isCollapsed()) panel.expand()
+    else if (!consultantExplorerVisible && !panel.isCollapsed()) panel.collapse()
+  }, [consultantExplorerVisible])
+  useEffect(() => {
+    const panel = developerExplorerRef.current
+    if (!panel || developerExplorerVisible === undefined) return
+    if (developerExplorerVisible && panel.isCollapsed()) panel.expand()
+    else if (!developerExplorerVisible && !panel.isCollapsed()) panel.collapse()
+  }, [developerExplorerVisible])
 
   // Quit-time three-way unsaved-change flow. Main vetoes window close and
   // sends `requestClose`; we walk each dirty pane through the same
@@ -231,27 +261,38 @@ export default function App(): JSX.Element {
                   key="consultant-inner"
                   direction="horizontal"
                   onLayout={(sizes) => {
-                    if (sizes.length === 2) setLayout({ consultantInner: [sizes[0], sizes[1]] })
+                    // Skip persistence while the explorer is collapsed —
+                    // otherwise [0, 100] would overwrite the real two-panel
+                    // split the user expects back on re-open.
+                    if (sizes.length === 2 && sizes[0] > 0) {
+                      setLayout({ consultantInner: [sizes[0], sizes[1]] })
+                    }
                   }}
                 >
-                  {config.consultantExplorerVisible && (
-                    <>
-                      <Panel
-                        key="consultant-explorer"
-                        id="consultant-explorer"
-                        order={1}
-                        defaultSize={config.layout.consultantInner[0]}
-                        minSize={10}
-                      >
-                        <FileTree
-                          root={config.consultant_dir}
-                          label="Consultant Files"
-                          onOpenFile={openFileInConsultantPane}
-                        />
-                      </Panel>
-                      <HSplitHandle />
-                    </>
-                  )}
+                  <Panel
+                    key="consultant-explorer"
+                    id="consultant-explorer"
+                    order={1}
+                    ref={consultantExplorerRef}
+                    collapsible
+                    collapsedSize={0}
+                    defaultSize={
+                      config.consultantExplorerVisible ? config.layout.consultantInner[0] : 0
+                    }
+                    minSize={10}
+                    onCollapse={() => setConsultantExplorerVisible(false)}
+                    onExpand={() => setConsultantExplorerVisible(true)}
+                  >
+                    <FileTree
+                      root={config.consultant_dir}
+                      label="Consultant Files"
+                      onOpenFile={openFileInConsultantPane}
+                    />
+                  </Panel>
+                  <PanelResizeHandle
+                    className={`hsplit-handle${config.consultantExplorerVisible ? '' : ' hsplit-handle-hidden'}`}
+                    disabled={!config.consultantExplorerVisible}
+                  />
                   <Panel
                     key="consultant-terminal"
                     id="consultant-terminal"
@@ -288,27 +329,35 @@ export default function App(): JSX.Element {
                   key="developer-inner"
                   direction="horizontal"
                   onLayout={(sizes) => {
-                    if (sizes.length === 2) setLayout({ developerInner: [sizes[0], sizes[1]] })
+                    if (sizes.length === 2 && sizes[0] > 0) {
+                      setLayout({ developerInner: [sizes[0], sizes[1]] })
+                    }
                   }}
                 >
-                  {config.developerExplorerVisible && (
-                    <>
-                      <Panel
-                        key="developer-explorer"
-                        id="developer-explorer"
-                        order={1}
-                        defaultSize={config.layout.developerInner[0]}
-                        minSize={10}
-                      >
-                        <FileTree
-                          root={config.developer_dir}
-                          label="Project Files"
-                          onOpenFile={openFileInDeveloperPane}
-                        />
-                      </Panel>
-                      <HSplitHandle />
-                    </>
-                  )}
+                  <Panel
+                    key="developer-explorer"
+                    id="developer-explorer"
+                    order={1}
+                    ref={developerExplorerRef}
+                    collapsible
+                    collapsedSize={0}
+                    defaultSize={
+                      config.developerExplorerVisible ? config.layout.developerInner[0] : 0
+                    }
+                    minSize={10}
+                    onCollapse={() => setDeveloperExplorerVisible(false)}
+                    onExpand={() => setDeveloperExplorerVisible(true)}
+                  >
+                    <FileTree
+                      root={config.developer_dir}
+                      label="Project Files"
+                      onOpenFile={openFileInDeveloperPane}
+                    />
+                  </Panel>
+                  <PanelResizeHandle
+                    className={`hsplit-handle${config.developerExplorerVisible ? '' : ' hsplit-handle-hidden'}`}
+                    disabled={!config.developerExplorerVisible}
+                  />
                   <Panel
                     key="developer-terminal"
                     id="developer-terminal"
