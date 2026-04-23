@@ -1,8 +1,10 @@
 name: release
 
-# Publishes Linux installers (.deb, .rpm) built via electron-forge make and
-# attaches them to a GitHub Release. Normal CI in `ci.yml` only validates
-# `electron-forge package` and is intentionally left untouched.
+# Builds installers across Linux, macOS, and Windows via electron-forge make
+# and attaches them to a GitHub Release on `v*` tag pushes. `workflow_dispatch`
+# runs the same matrix for validation but uploads only workflow artifacts and
+# does not create or publish a GitHub Release. Normal CI in `ci.yml` only
+# validates `electron-forge package` and is intentionally left untouched.
 
 on:
   push:
@@ -21,9 +23,64 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  linux:
-    name: linux installers
+  # Dedicated release-creation job so platform builds never race `gh release
+  # create`. Runs only on `v*` tag pushes. On `workflow_dispatch` this job is
+  # skipped and the matrix below still runs (see its `if:` condition).
+  create-release:
+    name: create github release
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      # Guard: a pushed `vX.Y.Z` tag must match `package.json` version `X.Y.Z`.
+      # Local packaging bumps `package.json` via `npm run package:patch|minor`
+      # (or `make:patch|minor`) but never tags; tagging is explicit. The check
+      # runs here so the release isn't even created when the version is stale,
+      # and it runs again in each platform job so no single job can ship with
+      # a mismatched version.
+      - name: Verify tag matches package.json version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          TAG_VERSION="${TAG#v}"
+          PKG_VERSION="$(jq -r .version package.json)"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag ${TAG} implies version ${TAG_VERSION}, but package.json is ${PKG_VERSION}." >&2
+            echo "Bump package.json (e.g. 'npm run package:patch' locally) and re-tag the updated commit." >&2
+            exit 1
+          fi
+          echo "Tag ${TAG} matches package.json version ${PKG_VERSION}."
+
+      - name: Create GitHub Release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; platform jobs will upload into it."
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+
+  build:
+    name: build ${{ matrix.platform }}
+    needs: create-release
+    # Run when `create-release` succeeded (tag pushes) or was skipped
+    # (workflow_dispatch). Stop only if it actually failed or was cancelled.
+    if: always() && needs.create-release.result != 'failure' && needs.create-release.result != 'cancelled'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+          - platform: macos
+            os: macos-latest
+          - platform: windows
+            os: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -32,13 +89,12 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Guard: a pushed `vX.Y.Z` tag must match `package.json` version `X.Y.Z`.
-      # Local packaging bumps `package.json` via `npm run package:patch|minor`
-      # (or `make:patch|minor`) but never tags; tagging is explicit. This
-      # check fails fast if someone tags a commit whose version wasn't bumped.
-      # Skipped on `workflow_dispatch` since there's no tag to compare.
+      # Re-check tag vs package.json on every platform job so an isolated
+      # re-run can never publish a mismatched version. Skipped on
+      # `workflow_dispatch` since there's no tag to compare.
       - name: Verify tag matches package.json version
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
@@ -55,7 +111,10 @@ jobs:
       #   - MakerDeb  → dpkg / fakeroot
       #   - MakerRpm  → rpmbuild (provided by the `rpm` package on Ubuntu)
       # ubuntu-latest ships dpkg + fakeroot by default; rpmbuild is not.
+      # macOS (MakerDMG / MakerZIP) and Windows (MakerSquirrel) runners
+      # already ship the needed tooling.
       - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends rpm fakeroot dpkg
@@ -71,36 +130,74 @@ jobs:
 
       # Always keep artifacts on the Actions run for debugging, even on a
       # workflow_dispatch (no tag, so the release-upload step is skipped).
+      # Matrix artifact name is per-platform so the three jobs don't collide.
       - name: Upload workflow artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: archidev-flow-linux-make
+          name: archidev-flow-${{ matrix.platform }}-make
           path: out/make/**
           if-no-files-found: ignore
           retention-days: 14
 
-      # Tag builds (`push` to `refs/tags/v*`) are the only ones that publish
-      # to a GitHub Release. `workflow_dispatch` runs produce artifacts only.
-      - name: Publish to GitHub Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+      # Per-platform release uploads. Each uploads a disjoint set of assets
+      # into the Release that `create-release` already created, so parallel
+      # matrix jobs can't collide on `gh release create`. `--clobber` makes
+      # re-runs idempotent. Empty asset lists are a hard error so a platform
+      # can't silently publish an incomplete release.
+      - name: Upload Linux release assets
+        if: matrix.platform == 'linux' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes
-          fi
-
+          # MakerDeb → out/make/deb/<arch>/*.deb
+          # MakerRpm → out/make/rpm/<arch>/*.rpm
           mapfile -t ASSETS < <(find out/make -type f \( -name '*.deb' -o -name '*.rpm' \))
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No .deb or .rpm artifacts found under out/make" >&2
             exit 1
           fi
+          printf 'Uploading %s\n' "${ASSETS[@]}"
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
 
+      - name: Upload macOS release assets
+        if: matrix.platform == 'macos' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # MakerDMG → out/make/*.dmg
+          # MakerZIP (darwin target) → out/make/zip/darwin/<arch>/*.zip
+          mapfile -t ASSETS < <(find out/make -type f \( -name '*.dmg' -o -name '*.zip' \))
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No .dmg or .zip artifacts found under out/make" >&2
+            exit 1
+          fi
+          printf 'Uploading %s\n' "${ASSETS[@]}"
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
+
+      - name: Upload Windows release assets
+        if: matrix.platform == 'windows' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # MakerSquirrel → out/make/squirrel.windows/<arch>/:
+          #   *.exe (Setup.exe), *.nupkg (full + delta), plus a RELEASES index.
+          # The RELEASES file is needed for Squirrel auto-update feeds; we
+          # leave it out of the Release for now since no auto-update feed is
+          # configured. Users install via the Setup .exe.
+          mapfile -t ASSETS < <(find out/make -type f \( -name '*.exe' -o -name '*.nupkg' \))
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No .exe or .nupkg artifacts found under out/make" >&2
+            exit 1
+          fi
           printf 'Uploading %s\n' "${ASSETS[@]}"
           gh release upload "$TAG" "${ASSETS[@]}" --clobber
