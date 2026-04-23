@@ -63,26 +63,84 @@ async function ensureHeaders() {
   }
 }
 
-function downloadTo(url, dest) {
+// Follow redirects before touching the filesystem. Opening the destination
+// WriteStream before a redirect on Windows leaves a dangling handle on the
+// file the recursive call is also writing to, which has been observed to
+// produce `LNK1104: cannot open file ... node.lib` during node-gyp builds.
+function httpGet(url, maxRedirects = 5) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const fs = require('node:fs')
-    const file = fs.createWriteStream(dest)
-    https
-      .get(url, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume()
-          downloadTo(res.headers.location, dest).then(resolvePromise, rejectPromise)
-          return
-        }
-        if (res.statusCode !== 200) {
-          rejectPromise(new Error(`download failed: ${res.statusCode}`))
-          return
-        }
-        res.pipe(file)
-        file.on('finish', () => file.close(() => resolvePromise()))
-      })
-      .on('error', rejectPromise)
+    const follow = (currentUrl, remaining) => {
+      https
+        .get(currentUrl, (res) => {
+          const status = res.statusCode || 0
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume()
+            if (remaining <= 0) {
+              rejectPromise(new Error(`too many redirects for ${url}`))
+              return
+            }
+            const nextUrl = new URL(res.headers.location, currentUrl).toString()
+            follow(nextUrl, remaining - 1)
+            return
+          }
+          if (status !== 200) {
+            res.resume()
+            rejectPromise(new Error(`download failed: ${status} for ${currentUrl}`))
+            return
+          }
+          resolvePromise(res)
+        })
+        .on('error', rejectPromise)
+    }
+    follow(url, maxRedirects)
   })
+}
+
+function downloadTo(url, dest) {
+  const fs = require('node:fs')
+  return httpGet(url).then(
+    (res) =>
+      new Promise((resolvePromise, rejectPromise) => {
+        // Download to a sibling temp path and rename into place so MSBuild
+        // (or any later consumer) never observes a partial or locked file.
+        const tmpDest = `${dest}.download`
+        try {
+          fs.unlinkSync(tmpDest)
+        } catch {}
+        const file = fs.createWriteStream(tmpDest)
+        let settled = false
+        const fail = (err) => {
+          if (settled) return
+          settled = true
+          file.destroy()
+          try {
+            fs.unlinkSync(tmpDest)
+          } catch {}
+          rejectPromise(err)
+        }
+        file.on('error', fail)
+        res.on('error', fail)
+        res.pipe(file)
+        file.on('finish', () => {
+          file.close((closeErr) => {
+            if (closeErr) {
+              fail(closeErr)
+              return
+            }
+            try {
+              fs.renameSync(tmpDest, dest)
+            } catch (renameErr) {
+              fail(renameErr)
+              return
+            }
+            if (!settled) {
+              settled = true
+              resolvePromise()
+            }
+          })
+        })
+      })
+  )
 }
 
 function rebuild(moduleName) {
