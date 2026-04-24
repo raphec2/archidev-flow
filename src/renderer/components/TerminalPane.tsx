@@ -9,8 +9,10 @@ type Props = {
   command: string
   onSelectionChange: (text: string) => void
   onSendToOther: () => void
-  onSendToNotes: () => void
-  leadingTool?: React.ReactNode
+  onSendToLeftEditor: () => void
+  onSendToRightEditor: () => void
+  sideTool?: React.ReactNode
+  mirrored?: boolean
 }
 
 export function TerminalPane({
@@ -20,8 +22,10 @@ export function TerminalPane({
   command,
   onSelectionChange,
   onSendToOther,
-  onSendToNotes,
-  leadingTool
+  onSendToLeftEditor,
+  onSendToRightEditor,
+  sideTool,
+  mirrored = false
 }: Props): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -133,21 +137,70 @@ export function TerminalPane({
     return () => host.removeEventListener('archidev:paste', handler as EventListener)
   }, [])
 
+  const editorButtons = (
+    <>
+      <button
+        onClick={onSendToLeftEditor}
+        title="Paste selection into Left Editor"
+      >
+        → Left Editor
+      </button>
+      <button
+        onClick={onSendToRightEditor}
+        title="Paste selection into Right Editor"
+      >
+        → Right Editor
+      </button>
+    </>
+  )
+  const pasteToTerminalButton = (
+    <button onClick={onSendToOther} title="Paste selection into the other terminal (no Enter)">
+      Paste to Terminal
+    </button>
+  )
+  const restartButton = (
+    <button onClick={restart} title="Kill the current process and rerun the configured tool">
+      ↻ Restart
+    </button>
+  )
+  const separator = <span className="toolbar-separator" aria-hidden="true" />
+
   return (
-    <div className="pane" data-terminal-id={id}>
+    <div className={`pane${mirrored ? ' pane-mirrored' : ''}`} data-terminal-id={id}>
       <div className="pane-header">
-        <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          {leadingTool}
-          <span className="label">{label}</span>
-          <span className="path" title={`${cwd} — ${command}`}>
-            {cwd} · {command}
-          </span>
-        </div>
-        <div className="toolbar">
-          <button onClick={onSendToOther} title="Paste selection into other terminal (no Enter)">→ terminal</button>
-          <button onClick={onSendToNotes} title="Append selection to Notes">→ notes</button>
-          <button onClick={restart} title="Kill the current process and rerun the configured tool">↻ restart</button>
-        </div>
+        {mirrored ? (
+          <>
+            <div className="toolbar">
+              {restartButton}
+              {separator}
+              {pasteToTerminalButton}
+              {editorButtons}
+            </div>
+            <div className="pane-header-info pane-header-info-mirrored">
+              <span className="path" title={`${cwd} — ${command}`}>
+                {cwd} · {command}
+              </span>
+              <span className="label">{label}</span>
+              {sideTool}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="pane-header-info">
+              {sideTool}
+              <span className="label">{label}</span>
+              <span className="path" title={`${cwd} — ${command}`}>
+                {cwd} · {command}
+              </span>
+            </div>
+            <div className="toolbar">
+              {editorButtons}
+              {pasteToTerminalButton}
+              {separator}
+              {restartButton}
+            </div>
+          </>
+        )}
       </div>
       <div className="pane-body" onClick={focus}>
         <div ref={hostRef} className="xterm-host" />

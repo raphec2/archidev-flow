@@ -38,7 +38,9 @@ export default function App(): JSX.Element {
   const setDeveloperSelection = useStore((s) => s.setDeveloperSelection)
 
   const [gitDialog, setGitDialog] = useState<'commit' | 'push' | null>(null)
-  const [notesAppend, setNotesAppend] = useState<{ seq: number; text: string } | null>(null)
+  const [editorAppend, setEditorAppend] = useState<
+    { seq: number; paneId: string; text: string } | null
+  >(null)
 
   const gitCwd = config?.developer_dir ?? null
   const { status: gitStatus, refresh: refreshGit } = useGitStatus(gitCwd)
@@ -201,10 +203,17 @@ export default function App(): JSX.Element {
     pasteToTerminal(sourceId === 'consultant' ? 'developer' : 'consultant', text)
   }
 
-  function sendTerminalToNotes(sourceId: 'consultant' | 'developer'): void {
+  function sendTerminalToEditor(
+    sourceId: 'consultant' | 'developer',
+    position: 'left' | 'right'
+  ): void {
+    if (!config) return
     const text = sourceId === 'consultant' ? consultantSelection : developerSelection
     if (!text) return
-    setNotesAppend({ seq: Date.now(), text })
+    const editors = config.editors
+    const target = position === 'left' ? editors[0] : editors[editors.length - 1]
+    if (!target) return
+    setEditorAppend({ seq: Date.now(), paneId: target.id, text })
   }
 
   const developerEditor = config.editors.find((e) => e.id === 'file')
@@ -316,8 +325,9 @@ export default function App(): JSX.Element {
                       command={config.consultant_tool}
                       onSelectionChange={setConsultantSelection}
                       onSendToOther={() => sendTerminalToOther('consultant')}
-                      onSendToNotes={() => sendTerminalToNotes('consultant')}
-                      leadingTool={
+                      onSendToLeftEditor={() => sendTerminalToEditor('consultant', 'left')}
+                      onSendToRightEditor={() => sendTerminalToEditor('consultant', 'right')}
+                      sideTool={
                         <ExplorerToggleButton
                           side="consultant"
                           visible={config.consultantExplorerVisible}
@@ -336,15 +346,51 @@ export default function App(): JSX.Element {
                   key="developer-inner"
                   direction="horizontal"
                   onLayout={(sizes) => {
-                    if (sizes.length === 2 && sizes[0] > 0) {
-                      setLayout({ developerInner: [sizes[0], sizes[1]] })
+                    // Developer column renders terminal (first) then explorer
+                    // (second), but config.layout.developerInner keeps its
+                    // semantic order [explorer, terminal] so existing workspaces
+                    // don't need migration. Map by visual index here.
+                    if (sizes.length === 2 && sizes[1] > 0) {
+                      setLayout({ developerInner: [sizes[1], sizes[0]] })
                     }
                   }}
                 >
                   <Panel
+                    key="developer-terminal"
+                    id="developer-terminal"
+                    order={1}
+                    defaultSize={
+                      config.developerExplorerVisible ? config.layout.developerInner[1] : 100
+                    }
+                    minSize={20}
+                  >
+                    <TerminalPane
+                      id="developer"
+                      label="Developer"
+                      cwd={config.developer_dir}
+                      command={config.developer_tool}
+                      onSelectionChange={setDeveloperSelection}
+                      onSendToOther={() => sendTerminalToOther('developer')}
+                      onSendToLeftEditor={() => sendTerminalToEditor('developer', 'left')}
+                      onSendToRightEditor={() => sendTerminalToEditor('developer', 'right')}
+                      mirrored
+                      sideTool={
+                        <ExplorerToggleButton
+                          side="developer"
+                          visible={config.developerExplorerVisible}
+                          onClick={toggleDeveloperExplorer}
+                        />
+                      }
+                    />
+                  </Panel>
+                  <PanelResizeHandle
+                    className={`hsplit-handle${config.developerExplorerVisible ? '' : ' hsplit-handle-hidden'}`}
+                    disabled={!config.developerExplorerVisible}
+                  />
+                  <Panel
                     key="developer-explorer"
                     id="developer-explorer"
-                    order={1}
+                    order={2}
                     ref={developerExplorerRef}
                     collapsible
                     collapsedSize={0}
@@ -361,36 +407,6 @@ export default function App(): JSX.Element {
                       onOpenFile={openFileInDeveloperPane}
                     />
                   </Panel>
-                  <PanelResizeHandle
-                    className={`hsplit-handle${config.developerExplorerVisible ? '' : ' hsplit-handle-hidden'}`}
-                    disabled={!config.developerExplorerVisible}
-                  />
-                  <Panel
-                    key="developer-terminal"
-                    id="developer-terminal"
-                    order={2}
-                    defaultSize={
-                      config.developerExplorerVisible ? config.layout.developerInner[1] : 100
-                    }
-                    minSize={20}
-                  >
-                    <TerminalPane
-                      id="developer"
-                      label="Developer"
-                      cwd={config.developer_dir}
-                      command={config.developer_tool}
-                      onSelectionChange={setDeveloperSelection}
-                      onSendToOther={() => sendTerminalToOther('developer')}
-                      onSendToNotes={() => sendTerminalToNotes('developer')}
-                      leadingTool={
-                        <ExplorerToggleButton
-                          side="developer"
-                          visible={config.developerExplorerVisible}
-                          onClick={toggleDeveloperExplorer}
-                        />
-                      }
-                    />
-                  </Panel>
                 </PanelGroup>
               </Panel>
             </PanelGroup>
@@ -403,7 +419,7 @@ export default function App(): JSX.Element {
               panes={config.editors}
               initialSizes={config.layout.bottomHorizontal}
               onLayout={(sizes) => setLayout({ bottomHorizontal: sizes })}
-              notesAppend={notesAppend}
+              editorAppend={editorAppend}
               registerEditor={registerEditor}
               onChangeNotesPath={changeNotesPath}
               onPasteToTerminal={pasteToTerminal}
@@ -511,7 +527,7 @@ function BottomEditors({
   panes,
   initialSizes,
   onLayout,
-  notesAppend,
+  editorAppend,
   registerEditor,
   onChangeNotesPath,
   onPasteToTerminal
@@ -519,7 +535,7 @@ function BottomEditors({
   panes: EditorPaneData[]
   initialSizes: number[]
   onLayout: (sizes: number[]) => void
-  notesAppend: { seq: number; text: string } | null
+  editorAppend: { seq: number; paneId: string; text: string } | null
   registerEditor: (id: string) => (h: EditorPaneHandle | null) => void
   onChangeNotesPath: (newPath: string) => void
   onPasteToTerminal: (target: 'consultant' | 'developer', text: string) => void
@@ -550,7 +566,11 @@ function BottomEditors({
             }}
             onRename={(name) => setEditorPane(pane.id, { name })}
             onChangeNotesPath={pane.isNotes ? onChangeNotesPath : undefined}
-            externalAppend={pane.isNotes ? notesAppend : null}
+            externalAppend={
+              editorAppend && editorAppend.paneId === pane.id
+                ? { seq: editorAppend.seq, text: editorAppend.text }
+                : null
+            }
             onPasteToTerminal={onPasteToTerminal}
           />
         </PaneWithHandle>
@@ -589,6 +609,10 @@ function ExplorerToggleButton({
 }): JSX.Element {
   const name = side === 'consultant' ? 'Consultant Files' : 'Project Files'
   const title = visible ? `Hide ${name}` : `Show ${name}`
+  // Point the chevron toward the explorer panel: consultant explorer is on
+  // the left, developer explorer is on the right.
+  const chev =
+    side === 'consultant' ? (visible ? '◀' : '▶') : visible ? '▶' : '◀'
   return (
     <button
       className={`explorer-toggle${visible ? ' on' : ''}`}
@@ -597,7 +621,7 @@ function ExplorerToggleButton({
       aria-label={title}
       title={title}
     >
-      <span className="explorer-toggle-chev" aria-hidden="true">{visible ? '◀' : '▶'}</span>
+      <span className="explorer-toggle-chev" aria-hidden="true">{chev}</span>
       <span className="explorer-toggle-text">Files</span>
     </button>
   )

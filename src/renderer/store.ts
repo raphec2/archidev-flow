@@ -57,7 +57,7 @@ export const useStore = create<Store>((set, get) => ({
     if (v && !hasThird) {
       editors.unshift({
         id: 'consultantFile',
-        name: 'Consultant File',
+        name: 'Left Editor',
         filePath: null,
         isNotes: false
       })

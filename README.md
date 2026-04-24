@@ -245,6 +245,12 @@ quit in v1; v1x does not carry that bug forward.
 }
 ```
 
+## Windows terminal-hosting caveat
+
+Launching Codex from Windows `cmd.exe` / Command Prompt currently does not
+stay inside the hosted ArchiDev-Flow terminal surface and may pop into its
+own console context. PowerShell behavior is still unverified.
+
 ## Out of scope
 
 Multi-project management, SSH terminals, remote editing, cloud sync,

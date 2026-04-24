@@ -75,7 +75,7 @@ export class LocalFsWorkspaceStore implements WorkspaceStore {
       developerExplorerVisible: true,
       editors: [
         { id: 'notes', name: 'Notes', filePath: null, isNotes: true },
-        { id: 'file', name: 'File', filePath: null, isNotes: false }
+        { id: 'file', name: 'Right Editor', filePath: null, isNotes: false }
       ],
       notesPath: this.defaultNotesPath(projectRoot),
       lastOpenedFiles: [],
