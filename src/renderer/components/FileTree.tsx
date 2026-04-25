@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react'
 import type { DirEntry } from '../../shared/config'
 
 type Node = DirEntry & {
@@ -43,9 +43,13 @@ type Props = {
   root: string
   label: string
   onOpenFile: (path: string) => void
+  // Caller-supplied controls that render in the same toolbar as sort/refresh,
+  // so wrappers (e.g. the bottom-center Notes/Files toggle) can extend the
+  // header without nesting a second pane chrome.
+  headerExtras?: ReactNode
 }
 
-export function FileTree({ root, label, onOpenFile }: Props): JSX.Element {
+export function FileTree({ root, label, onOpenFile, headerExtras }: Props): JSX.Element {
   const [tree, setTree] = useState<Node[]>([])
   const [selected, setSelected] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -144,6 +148,7 @@ export function FileTree({ root, label, onOpenFile }: Props): JSX.Element {
           <span className="path" title={root}>{root}</span>
         </div>
         <div className="toolbar">
+          {headerExtras}
           <select
             className="sort-select"
             value={sortMode}

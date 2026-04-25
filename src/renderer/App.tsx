@@ -423,6 +423,11 @@ export default function App(): JSX.Element {
               registerEditor={registerEditor}
               onChangeNotesPath={changeNotesPath}
               onPasteToTerminal={pasteToTerminal}
+              projectRoot={projectRoot || config.developer_dir}
+              hasLeftEditor={!!consultantEditor}
+              promptDirtyForPane={promptDirtyBeforeAction}
+              openFileInLeft={openFileInConsultantPane}
+              openFileInRight={openFileInDeveloperPane}
             />
           </Panel>
         </PanelGroup>
@@ -530,7 +535,12 @@ function BottomEditors({
   editorAppend,
   registerEditor,
   onChangeNotesPath,
-  onPasteToTerminal
+  onPasteToTerminal,
+  projectRoot,
+  hasLeftEditor,
+  promptDirtyForPane,
+  openFileInLeft,
+  openFileInRight
 }: {
   panes: EditorPaneData[]
   initialSizes: number[]
@@ -539,6 +549,11 @@ function BottomEditors({
   registerEditor: (id: string) => (h: EditorPaneHandle | null) => void
   onChangeNotesPath: (newPath: string) => void
   onPasteToTerminal: (target: 'consultant' | 'developer', text: string) => void
+  projectRoot: string
+  hasLeftEditor: boolean
+  promptDirtyForPane: (paneId: string, action: string) => Promise<boolean>
+  openFileInLeft: (path: string) => Promise<void>
+  openFileInRight: (path: string) => Promise<void>
 }): JSX.Element {
   const setEditorPane = useStore((s) => s.setEditorPane)
   const config = useStore((s) => s.config)!
@@ -552,30 +567,168 @@ function BottomEditors({
 
   return (
     <PanelGroup direction="horizontal" onLayout={onLayout}>
-      {panes.map((pane, idx) => (
-        <PaneWithHandle
-          key={pane.id}
-          isFirst={idx === 0}
-          defaultSize={defaultSizes[idx] ?? Math.round(100 / panes.length)}
-        >
-          <EditorPane
-            ref={registerEditor(pane.id)}
-            pane={{
-              ...pane,
-              filePath: pane.isNotes ? notesPath : pane.filePath
-            }}
-            onRename={(name) => setEditorPane(pane.id, { name })}
-            onChangeNotesPath={pane.isNotes ? onChangeNotesPath : undefined}
-            externalAppend={
-              editorAppend && editorAppend.paneId === pane.id
-                ? { seq: editorAppend.seq, text: editorAppend.text }
-                : null
-            }
-            onPasteToTerminal={onPasteToTerminal}
-          />
-        </PaneWithHandle>
-      ))}
+      {panes.map((pane, idx) => {
+        const externalAppend =
+          editorAppend && editorAppend.paneId === pane.id
+            ? { seq: editorAppend.seq, text: editorAppend.text }
+            : null
+        return (
+          <PaneWithHandle
+            key={pane.id}
+            isFirst={idx === 0}
+            defaultSize={defaultSizes[idx] ?? Math.round(100 / panes.length)}
+          >
+            {pane.isNotes ? (
+              <NotesOrFiles
+                pane={pane}
+                notesPath={notesPath}
+                projectRoot={projectRoot}
+                registerEditor={registerEditor(pane.id)}
+                onRename={(name) => setEditorPane(pane.id, { name })}
+                onChangeNotesPath={onChangeNotesPath}
+                externalAppend={externalAppend}
+                onPasteToTerminal={onPasteToTerminal}
+                hasLeftEditor={hasLeftEditor}
+                promptNotesDirty={() => promptDirtyForPane(pane.id, 'switch to Files mode')}
+                openLeft={openFileInLeft}
+                openRight={openFileInRight}
+              />
+            ) : (
+              <EditorPane
+                ref={registerEditor(pane.id)}
+                pane={pane}
+                onRename={(name) => setEditorPane(pane.id, { name })}
+                externalAppend={externalAppend}
+                onPasteToTerminal={onPasteToTerminal}
+              />
+            )}
+          </PaneWithHandle>
+        )
+      })}
     </PanelGroup>
+  )
+}
+
+// Center-bottom surface: the existing Notes editor or a global workspace file
+// picker. Mode is local renderer state and intentionally not persisted.
+// The Notes EditorPane unmounts when entering Files mode, so we gate the
+// Notes → Files transition on the same dirty-editor prompt used by other
+// editor replacements; otherwise switching could silently discard edits.
+function NotesOrFiles({
+  pane,
+  notesPath,
+  projectRoot,
+  registerEditor,
+  onRename,
+  onChangeNotesPath,
+  externalAppend,
+  onPasteToTerminal,
+  hasLeftEditor,
+  promptNotesDirty,
+  openLeft,
+  openRight
+}: {
+  pane: EditorPaneData
+  notesPath: string
+  projectRoot: string
+  registerEditor: (h: EditorPaneHandle | null) => void
+  onRename: (name: string) => void
+  onChangeNotesPath: (newPath: string) => void
+  externalAppend: { seq: number; text: string } | null
+  onPasteToTerminal: (target: 'consultant' | 'developer', text: string) => void
+  hasLeftEditor: boolean
+  promptNotesDirty: () => Promise<boolean>
+  openLeft: (path: string) => Promise<void>
+  openRight: (path: string) => Promise<void>
+}): JSX.Element {
+  const [mode, setMode] = useState<'notes' | 'files'>('notes')
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+
+  async function switchTo(next: 'notes' | 'files'): Promise<void> {
+    if (next === mode) return
+    if (next === 'files' && !(await promptNotesDirty())) return
+    setMode(next)
+  }
+
+  const toggle = (
+    <div className="mode-toggle" role="tablist" aria-label="Center pane mode">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'notes'}
+        className={mode === 'notes' ? 'on' : ''}
+        onClick={() => void switchTo('notes')}
+        title="Show Notes editor"
+      >
+        Notes
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'files'}
+        className={mode === 'files' ? 'on' : ''}
+        onClick={() => void switchTo('files')}
+        title="Show workspace files"
+      >
+        Files
+      </button>
+    </div>
+  )
+
+  if (mode === 'notes') {
+    return (
+      <EditorPane
+        ref={registerEditor}
+        pane={{ ...pane, filePath: notesPath }}
+        onRename={onRename}
+        onChangeNotesPath={onChangeNotesPath}
+        externalAppend={externalAppend}
+        onPasteToTerminal={onPasteToTerminal}
+        headerExtras={toggle}
+      />
+    )
+  }
+
+  const openLeftTitle = !hasLeftEditor
+    ? 'Show the Consultant Files explorer to enable a left editor target'
+    : selectedFile
+      ? `Open ${selectedFile} in the Left Editor`
+      : 'Select a file to open in the Left Editor'
+  const openRightTitle = selectedFile
+    ? `Open ${selectedFile} in the Right Editor`
+    : 'Select a file to open in the Right Editor'
+
+  return (
+    <FileTree
+      root={projectRoot}
+      label="Files"
+      onOpenFile={setSelectedFile}
+      headerExtras={
+        <>
+          {toggle}
+          <button
+            type="button"
+            disabled={!selectedFile || !hasLeftEditor}
+            onClick={() => {
+              if (selectedFile) void openLeft(selectedFile)
+            }}
+            title={openLeftTitle}
+          >
+            Open Left
+          </button>
+          <button
+            type="button"
+            disabled={!selectedFile}
+            onClick={() => {
+              if (selectedFile) void openRight(selectedFile)
+            }}
+            title={openRightTitle}
+          >
+            Open Right
+          </button>
+        </>
+      }
+    />
   )
 }
 

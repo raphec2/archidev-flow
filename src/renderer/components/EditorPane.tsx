@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
 import { EditorState, Compartment } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
@@ -20,10 +20,14 @@ type Props = {
   onChangeNotesPath?: (newPath: string) => void
   externalAppend?: { seq: number; text: string } | null
   onPasteToTerminal?: (target: 'consultant' | 'developer', text: string) => void
+  // Caller-supplied controls that render in the same toolbar, so wrappers
+  // (e.g. the bottom-center Notes/Files toggle) can extend the header
+  // without nesting a second pane chrome.
+  headerExtras?: ReactNode
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPane(
-  { pane, onRename, onChangeNotesPath, externalAppend, onPasteToTerminal },
+  { pane, onRename, onChangeNotesPath, externalAppend, onPasteToTerminal, headerExtras },
   ref
 ): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -212,6 +216,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
           </span>
         </div>
         <div className="toolbar">
+          {headerExtras}
           {status && <span style={{ color: 'var(--text-2)', fontSize: 11 }}>{status}</span>}
           {onPasteToTerminal && (
             <>

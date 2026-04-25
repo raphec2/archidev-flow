@@ -171,6 +171,44 @@ input:focus, textarea:focus {
   line-height: 1;
 }
 
+/* Segmented Notes/Files toggle for the center-bottom pane. Two adjacent
+   buttons share a single border so the cluster reads as one control. The
+   .pane-header button rule below still supplies typography and hover. */
+.mode-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  margin-right: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mode-toggle button {
+  border: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 2px 8px;
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.mode-toggle button + button {
+  border-left: 1px solid var(--border-strong) !important;
+}
+.mode-toggle button:hover {
+  background: var(--bg-3);
+  color: var(--text-0);
+}
+.mode-toggle button.on {
+  background: var(--accent-dim);
+  color: var(--text-0);
+}
+.mode-toggle button.on:hover {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+
 .pane-header {
   display: flex;
   align-items: center;
