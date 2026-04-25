@@ -609,6 +609,38 @@ function BottomEditors({
   )
 }
 
+// Renderer-side parent-of-path. Cross-platform because the renderer can see
+// either POSIX or Windows-style paths depending on the OS the app launched on,
+// and we don't want a new IPC just to call path.dirname. Returns the input
+// unchanged at the filesystem root so the caller can use the fixpoint as the
+// "can't go up" signal.
+function parentDir(p: string): string {
+  if (!p) return p
+  // Strip a trailing separator (but never down to the empty string, and never
+  // off a Windows drive root like 'C:\').
+  let s = p
+  while (
+    s.length > 1 &&
+    (s.endsWith('/') || s.endsWith('\\')) &&
+    !/^[A-Za-z]:[\\/]$/.test(s)
+  ) {
+    s = s.slice(0, -1)
+  }
+  const idx = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'))
+  if (idx < 0) return s
+  if (idx === 0) return '/'
+  // Windows: 'C:\foo' (idx === 2) → return 'C:\'
+  if (idx === 2 && /^[A-Za-z]:[\\/]/.test(s)) return s.slice(0, 3)
+  return s.slice(0, idx)
+}
+
+function isUnderDir(file: string, dir: string): boolean {
+  if (!file || !dir) return false
+  const sep = dir.includes('\\') ? '\\' : '/'
+  const prefix = dir.endsWith('/') || dir.endsWith('\\') ? dir : dir + sep
+  return file === dir || file.startsWith(prefix)
+}
+
 // Center-bottom surface: the existing Notes editor or a global workspace file
 // picker. Mode is local renderer state and intentionally not persisted.
 // The Notes EditorPane unmounts when entering Files mode, so we gate the
@@ -643,11 +675,28 @@ function NotesOrFiles({
 }): JSX.Element {
   const [mode, setMode] = useState<'notes' | 'files'>('notes')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  // Browse root for Files mode. Local-only state; switching workspaces resets
+  // it via the effect below so the picker doesn't strand the user in an
+  // unrelated directory after a project change.
+  const [browseRoot, setBrowseRoot] = useState<string>(projectRoot)
+
+  useEffect(() => {
+    setBrowseRoot(projectRoot)
+    setSelectedFile(null)
+  }, [projectRoot])
 
   async function switchTo(next: 'notes' | 'files'): Promise<void> {
     if (next === mode) return
     if (next === 'files' && !(await promptNotesDirty())) return
     setMode(next)
+  }
+
+  function changeBrowseRoot(next: string): void {
+    if (next === browseRoot) return
+    setBrowseRoot(next)
+    if (selectedFile && !isUnderDir(selectedFile, next)) {
+      setSelectedFile(null)
+    }
   }
 
   const toggle = (
@@ -698,14 +747,39 @@ function NotesOrFiles({
     ? `Open ${selectedFile} in the Right Editor`
     : 'Select a file to open in the Right Editor'
 
+  const parent = parentDir(browseRoot)
+  const canGoUp = parent !== browseRoot
+  const atWorkspace = browseRoot === projectRoot
+  const upTitle = canGoUp ? `Go up to ${parent}` : 'Already at filesystem root'
+  const workspaceTitle = atWorkspace
+    ? 'Already at workspace root'
+    : `Return to workspace root ${projectRoot}`
+
   return (
     <FileTree
-      root={projectRoot}
+      root={browseRoot}
       label="Files"
       onOpenFile={setSelectedFile}
       headerExtras={
         <>
           {toggle}
+          <button
+            type="button"
+            disabled={!canGoUp}
+            onClick={() => changeBrowseRoot(parent)}
+            title={upTitle}
+            aria-label="Go up one directory"
+          >
+            ↑ Up
+          </button>
+          <button
+            type="button"
+            disabled={atWorkspace}
+            onClick={() => changeBrowseRoot(projectRoot)}
+            title={workspaceTitle}
+          >
+            Workspace
+          </button>
           <button
             type="button"
             disabled={!selectedFile || !hasLeftEditor}

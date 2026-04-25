@@ -181,16 +181,17 @@ export function TerminalPane({
   //     horizontal margin so it's not flush with Files and not adjacent to
   //     any paste target
   //   - Info (label + path): stretchy middle column, spans both rows
-  //   - Paste group: bottom row only, inner edge (nearest destination
-  //     terminal), holds "Paste to" label + Left / Right / Terminal buttons
+  //   - Paste group: spans both rows on the inner edge (nearest destination
+  //     terminal). "Paste to" sits in the top row directly above the
+  //     Left / Right / Terminal buttons in the bottom row, so the label
+  //     reads as a header for the cluster on both sides.
   // Restart ends up diagonally offset from both Files (adjacent column but
   // different row position) and the paste cluster (distant column AND
   // different row), which is the accidental-click-safe zone the user asked
   // for. Mirrored side swaps the column order so the outer edge is on the
   // right for developer; Restart still sits one column inward from Files.
-  const pasteToolbar = (
-    <>
-      {pasteLabel}
+  const pasteButtons = (
+    <div className="pane-header-paste-buttons toolbar">
       {mirrored ? (
         <>
           {terminalButton}
@@ -204,7 +205,7 @@ export function TerminalPane({
           {terminalButton}
         </>
       )}
-    </>
+    </div>
   )
 
   return (
@@ -214,7 +215,10 @@ export function TerminalPane({
       >
         {mirrored ? (
           <>
-            <div className="pane-header-paste toolbar">{pasteToolbar}</div>
+            <div className="pane-header-paste">
+              {pasteLabel}
+              {pasteButtons}
+            </div>
             <div className="pane-header-info pane-header-info-mirrored">
               <span className="path" title={`${cwd} — ${command}`}>
                 {cwd} · {command}
@@ -234,7 +238,10 @@ export function TerminalPane({
                 {cwd} · {command}
               </span>
             </div>
-            <div className="pane-header-paste toolbar">{pasteToolbar}</div>
+            <div className="pane-header-paste">
+              {pasteLabel}
+              {pasteButtons}
+            </div>
           </>
         )}
       </div>
