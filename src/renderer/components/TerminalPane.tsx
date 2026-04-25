@@ -137,68 +137,104 @@ export function TerminalPane({
     return () => host.removeEventListener('archidev:paste', handler as EventListener)
   }, [])
 
-  const editorButtons = (
-    <>
-      <button
-        onClick={onSendToLeftEditor}
-        title="Paste selection into Left Editor"
-      >
-        → Left Editor
-      </button>
-      <button
-        onClick={onSendToRightEditor}
-        title="Paste selection into Right Editor"
-      >
-        → Right Editor
-      </button>
-    </>
+  const leftButton = (
+    <button
+      className="btn-side-left"
+      onClick={onSendToLeftEditor}
+      title="Paste selection into Left Editor"
+    >
+      Left
+    </button>
   )
-  const pasteToTerminalButton = (
+  const rightButton = (
+    <button
+      className="btn-side-right"
+      onClick={onSendToRightEditor}
+      title="Paste selection into Right Editor"
+    >
+      Right
+    </button>
+  )
+  const terminalButton = (
     <button onClick={onSendToOther} title="Paste selection into the other terminal (no Enter)">
-      Paste to Terminal
+      Terminal
     </button>
   )
   const restartButton = (
-    <button onClick={restart} title="Kill the current process and rerun the configured tool">
+    <button
+      className="btn-warn"
+      onClick={restart}
+      title="Kill the current process and rerun the configured tool"
+    >
       ↻ Restart
     </button>
   )
-  const separator = <span className="toolbar-separator" aria-hidden="true" />
+  const pasteLabel = (
+    <span className="toolbar-label" aria-hidden="true">
+      Paste to
+    </span>
+  )
+
+  // Pane-header layout (CSS grid, 4 cols × 2 rows):
+  //   - Files (sideTool): outer edge, spans both rows, vertically centered
+  //   - Restart: top row only, one column inward from Files, with extra
+  //     horizontal margin so it's not flush with Files and not adjacent to
+  //     any paste target
+  //   - Info (label + path): stretchy middle column, spans both rows
+  //   - Paste group: bottom row only, inner edge (nearest destination
+  //     terminal), holds "Paste to" label + Left / Right / Terminal buttons
+  // Restart ends up diagonally offset from both Files (adjacent column but
+  // different row position) and the paste cluster (distant column AND
+  // different row), which is the accidental-click-safe zone the user asked
+  // for. Mirrored side swaps the column order so the outer edge is on the
+  // right for developer; Restart still sits one column inward from Files.
+  const pasteToolbar = (
+    <>
+      {pasteLabel}
+      {mirrored ? (
+        <>
+          {terminalButton}
+          {leftButton}
+          {rightButton}
+        </>
+      ) : (
+        <>
+          {leftButton}
+          {rightButton}
+          {terminalButton}
+        </>
+      )}
+    </>
+  )
 
   return (
     <div className={`pane${mirrored ? ' pane-mirrored' : ''}`} data-terminal-id={id}>
-      <div className="pane-header">
+      <div
+        className={`pane-header pane-header-grid${mirrored ? ' pane-header-mirrored' : ''}`}
+      >
         {mirrored ? (
           <>
-            <div className="toolbar">
-              {restartButton}
-              {separator}
-              {pasteToTerminalButton}
-              {editorButtons}
-            </div>
+            <div className="pane-header-paste toolbar">{pasteToolbar}</div>
             <div className="pane-header-info pane-header-info-mirrored">
               <span className="path" title={`${cwd} — ${command}`}>
                 {cwd} · {command}
               </span>
               <span className="label">{label}</span>
-              {sideTool}
             </div>
+            <div className="pane-header-restart">{restartButton}</div>
+            <div className="pane-header-files">{sideTool}</div>
           </>
         ) : (
           <>
+            <div className="pane-header-files">{sideTool}</div>
+            <div className="pane-header-restart">{restartButton}</div>
             <div className="pane-header-info">
-              {sideTool}
               <span className="label">{label}</span>
               <span className="path" title={`${cwd} — ${command}`}>
                 {cwd} · {command}
               </span>
             </div>
-            <div className="toolbar">
-              {editorButtons}
-              {pasteToTerminalButton}
-              {separator}
-              {restartButton}
-            </div>
+            <div className="pane-header-paste toolbar">{pasteToolbar}</div>
           </>
         )}
       </div>

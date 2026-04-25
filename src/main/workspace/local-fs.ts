@@ -41,6 +41,27 @@ async function readJsonIfExists<T>(path: string): Promise<T | null> {
   }
 }
 
+// Rewrite legacy role-labeled editor pane defaults to the positional
+// `Left Editor` / `Right Editor` pair. Only the exact old default strings
+// are touched; anything the user has renamed is left alone.
+const LEGACY_EDITOR_NAMES: Record<string, { from: string; to: string }> = {
+  file: { from: 'File', to: 'Right Editor' },
+  consultantFile: { from: 'Consultant File', to: 'Left Editor' }
+}
+function migrateEditorNames(cfg: Config): Config {
+  if (!cfg.editors) return cfg
+  let changed = false
+  const editors = cfg.editors.map((e) => {
+    const rule = LEGACY_EDITOR_NAMES[e.id]
+    if (rule && e.name === rule.from) {
+      changed = true
+      return { ...e, name: rule.to }
+    }
+    return e
+  })
+  return changed ? { ...cfg, editors } : cfg
+}
+
 export class LocalFsWorkspaceStore implements WorkspaceStore {
   defaultNotesPath(projectRoot: string): string {
     return join(workspaceDir(projectRoot), WORKSPACE_NOTES)
@@ -120,24 +141,26 @@ export class LocalFsWorkspaceStore implements WorkspaceStore {
 
     const existing = await readJsonIfExists<Partial<Config>>(path)
     if (existing) {
-      return {
+      return migrateEditorNames({
         ...fallback,
         ...existing,
         layout: { ...fallback.layout, ...(existing.layout || {}) }
-      }
+      })
     }
 
     const legacySeed = await this.consumeLegacySeed()
-    const seeded: Config = legacySeed
-      ? {
-          ...fallback,
-          ...legacySeed,
-          layout: { ...fallback.layout, ...(legacySeed.layout || {}) },
-          // Preserve legacy notesPath so migrated notes content isn't orphaned.
-          // Fresh workspaces fall back to the workspace-scoped default above.
-          notesPath: legacySeed.notesPath || fallback.notesPath
-        }
-      : fallback
+    const seeded: Config = migrateEditorNames(
+      legacySeed
+        ? {
+            ...fallback,
+            ...legacySeed,
+            layout: { ...fallback.layout, ...(legacySeed.layout || {}) },
+            // Preserve legacy notesPath so migrated notes content isn't orphaned.
+            // Fresh workspaces fall back to the workspace-scoped default above.
+            notesPath: legacySeed.notesPath || fallback.notesPath
+          }
+        : fallback
+    )
 
     await fs.writeFile(path, JSON.stringify(seeded, null, 2), 'utf-8')
     await this.writeMeta(projectRoot)
