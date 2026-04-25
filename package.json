@@ -1,6 +1,6 @@
 {
   "name": "archidev-flow",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "description": "Local desktop workspace for a dual-AI CLI workflow",
   "main": ".vite/build/main.js",
   "author": "raphec",
