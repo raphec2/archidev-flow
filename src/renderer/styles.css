@@ -483,6 +483,9 @@ input:focus, textarea:focus {
   flex-direction: column;
   overflow: hidden;
 }
+.modal.commit {
+  width: 720px;
+}
 .modal-header {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
@@ -568,6 +571,9 @@ input:focus, textarea:focus {
   max-height: 220px;
   overflow: auto;
 }
+.change-list-untracked {
+  max-height: 280px;
+}
 .change-list-head {
   padding: 4px 8px;
   font-size: 11px;
@@ -616,12 +622,49 @@ input:focus, textarea:focus {
   accent-color: var(--accent);
   cursor: pointer;
 }
-.untracked-row:not(.checked) .change-path {
+.untracked-row.checked {
+  background: rgba(82, 168, 255, 0.08);
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+.untracked-row.omitted {
+  border-left: 2px solid var(--warn);
+  padding-left: 6px;
+}
+.untracked-row.omitted .change-path {
   color: var(--text-2);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 170, 0, 0.55);
+  text-decoration-thickness: 1px;
+}
+.untracked-state-pill {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.untracked-state-pill.in {
+  color: var(--success);
+  border-color: var(--success);
+  background: rgba(40, 200, 100, 0.08);
+}
+.untracked-state-pill.out {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: rgba(255, 170, 0, 0.08);
 }
 .tag-untracked.tag-on {
   color: var(--accent);
   border-color: var(--accent);
+}
+.change-section-omit {
+  color: var(--warn);
+  font-weight: 600;
 }
 .change-list ul {
   list-style: none;
@@ -656,6 +699,54 @@ input:focus, textarea:focus {
 .tag-conflict { color: var(--danger); border-color: var(--danger); font-weight: 700; }
 .tag-untracked { color: var(--text-2); border-color: var(--border-strong); }
 .change-path { color: var(--text-0); overflow: hidden; text-overflow: ellipsis; }
+
+.commit-summary {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-0);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.commit-summary-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.commit-summary-label {
+  color: var(--text-2);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 80px;
+  flex-shrink: 0;
+}
+.commit-summary-value { color: var(--text-0); }
+.commit-summary-omit { color: var(--warn); font-weight: 600; }
+.commit-summary-ok { color: var(--text-2); }
+.commit-summary-foot {
+  color: var(--text-2);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.commit-omit-warn {
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  background: rgba(255, 170, 0, 0.08);
+  color: var(--text-0);
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.commit-omit-warn strong { color: var(--warn); }
+
+.commit-btn-omit {
+  color: var(--warn);
+  font-weight: 600;
+}
 
 .push-summary {
   display: grid;

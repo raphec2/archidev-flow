@@ -65,6 +65,14 @@ export function CommitDialog({ cwd, status, onClose, onCommitted }: Props): JSX.
   const branchLabel = status.branch ?? '(unknown)'
   const hasScope = scopeEntries.length > 0
   const untrackedList = status.untracked
+  const includedUntrackedCount = includedUntracked.size
+  const omittedUntrackedCount = Math.max(
+    0,
+    untrackedList.length - includedUntrackedCount
+  )
+  const trackedCount = status.tracked.length
+  const hasUntracked = untrackedList.length > 0
+  const noneIncluded = hasUntracked && includedUntrackedCount === 0
 
   function toggleUntracked(path: string): void {
     setIncludedUntracked((prev) => {
@@ -105,7 +113,7 @@ export function CommitDialog({ cwd, status, onClose, onCommitted }: Props): JSX.
         if (e.target === e.currentTarget && phase !== 'running') onClose()
       }}
     >
-      <div className="modal">
+      <div className="modal commit">
         <div className="modal-header">
           Commit — <span className="branch-inline">{branchLabel}</span>
           {status.detached && <span className="status-warn"> (detached)</span>}
@@ -121,6 +129,14 @@ export function CommitDialog({ cwd, status, onClose, onCommitted }: Props): JSX.
                 onIncludeAll={includeAllUntracked}
                 onClear={clearUntracked}
               />
+              {noneIncluded && (
+                <div className="commit-omit-warn" role="status">
+                  <strong>{untrackedList.length}</strong> untracked file
+                  {untrackedList.length === 1 ? '' : 's'} present and{' '}
+                  <strong>none</strong> are included. Tick the checkboxes above
+                  to add new files to this commit.
+                </div>
+              )}
               <label>Commit message</label>
               <textarea
                 ref={inputRef}
@@ -132,17 +148,38 @@ export function CommitDialog({ cwd, status, onClose, onCommitted }: Props): JSX.
                 rows={3}
                 placeholder="feat: …"
               />
-              <div style={{ color: 'var(--text-2)', fontSize: 11 }}>
-                Stages tracked changes with <code>git add -u</code>
-                {includedUntracked.size > 0 && (
-                  <>
-                    {' '}
-                    plus {includedUntracked.size} opted-in untracked file
-                    {includedUntracked.size === 1 ? '' : 's'}
-                  </>
-                )}
-                , then <code>git commit -m &lt;msg&gt;</code>. Push is a separate
-                action.
+              <div className="commit-summary">
+                <div className="commit-summary-row">
+                  <span className="commit-summary-label">Tracked</span>
+                  <span className="commit-summary-value">
+                    {trackedCount} file{trackedCount === 1 ? '' : 's'} staged
+                    via <code>git add -u</code>
+                  </span>
+                </div>
+                <div className="commit-summary-row">
+                  <span className="commit-summary-label">Untracked</span>
+                  <span className="commit-summary-value">
+                    {includedUntrackedCount} included
+                    {hasUntracked && (
+                      <>
+                        {' · '}
+                        <span
+                          className={
+                            omittedUntrackedCount > 0
+                              ? 'commit-summary-omit'
+                              : 'commit-summary-ok'
+                          }
+                        >
+                          {omittedUntrackedCount} omitted
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="commit-summary-foot">
+                  Then <code>git commit -m &lt;msg&gt;</code>. Push is a
+                  separate action.
+                </div>
               </div>
             </>
           )}
@@ -168,10 +205,24 @@ export function CommitDialog({ cwd, status, onClose, onCommitted }: Props): JSX.
               <button
                 onClick={run}
                 disabled={!message.trim() || !hasScope}
-                title={!hasScope ? 'Nothing selected to commit' : undefined}
+                title={
+                  !hasScope
+                    ? 'Nothing selected to commit'
+                    : omittedUntrackedCount > 0
+                      ? `${omittedUntrackedCount} untracked file${
+                          omittedUntrackedCount === 1 ? '' : 's'
+                        } will NOT be committed`
+                      : undefined
+                }
               >
                 Commit {scopeEntries.length} file
                 {scopeEntries.length === 1 ? '' : 's'}
+                {omittedUntrackedCount > 0 && (
+                  <span className="commit-btn-omit">
+                    {' · '}
+                    {omittedUntrackedCount} untracked omitted
+                  </span>
+                )}
               </button>
             </>
           )}
@@ -209,7 +260,9 @@ function TrackedSection({
               <span className={`change-tag tag-${describeChange(c).tag}`}>
                 {describeChange(c).short}
               </span>
-              <span className="change-path">{c.path}</span>
+              <span className="change-path" title={c.path}>
+                {c.path}
+              </span>
             </li>
           ))}
         </ul>
@@ -233,12 +286,22 @@ function UntrackedSection({
 }): JSX.Element | null {
   if (untracked.length === 0) return null
   const selectedCount = included.size
+  const omittedCount = untracked.length - selectedCount
   return (
-    <div className="change-list">
+    <div className="change-list change-list-untracked">
       <div className="change-list-head">
         <span className="change-section-label">Untracked files</span>
         <span className="change-section-count">
-          {selectedCount}/{untracked.length} selected · opt-in only
+          {selectedCount}/{untracked.length} selected
+          {omittedCount > 0 && (
+            <>
+              {' · '}
+              <span className="change-section-omit">
+                {omittedCount} will be omitted
+              </span>
+            </>
+          )}
+          {' · opt-in only'}
         </span>
         <span className="change-section-actions">
           <button
@@ -263,7 +326,12 @@ function UntrackedSection({
         {untracked.map((p) => {
           const checked = included.has(p)
           return (
-            <li key={p} className={checked ? 'untracked-row checked' : 'untracked-row'}>
+            <li
+              key={p}
+              className={
+                checked ? 'untracked-row checked' : 'untracked-row omitted'
+              }
+            >
               <label>
                 <input
                   type="checkbox"
@@ -275,7 +343,17 @@ function UntrackedSection({
                 >
                   ??
                 </span>
-                <span className="change-path">{p}</span>
+                <span className="change-path" title={p}>
+                  {p}
+                </span>
+                <span
+                  className={
+                    checked ? 'untracked-state-pill in' : 'untracked-state-pill out'
+                  }
+                  aria-hidden="true"
+                >
+                  {checked ? 'will commit' : 'will skip'}
+                </span>
               </label>
             </li>
           )
