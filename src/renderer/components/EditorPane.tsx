@@ -17,6 +17,10 @@ export type EditorPaneHandle = {
 type Props = {
   pane: EditorPaneData
   onRename: (name: string) => void
+  // Save-As callback: caller passes this when the pane supports relocating
+  // the underlying document via a save dialog (currently only Notes). When
+  // present, an explicit "Save As…" button appears, and an ordinary Save with
+  // no current filePath routes through Save As instead of failing silently.
   onChangeNotesPath?: (newPath: string) => void
   externalAppend?: { seq: number; text: string } | null
   onPasteToTerminal?: (target: 'consultant' | 'developer', text: string) => void
@@ -24,10 +28,24 @@ type Props = {
   // (e.g. the bottom-center Notes/Files toggle) can extend the header
   // without nesting a second pane chrome.
   headerExtras?: ReactNode
+  // Close-document control. Owners (App.tsx for left/right, Notes wrapper for
+  // center) handle the dirty prompt themselves; this just signals intent.
+  onClose?: () => void
+  // New-document control (Notes only). Same contract as onClose.
+  onNew?: () => void
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPane(
-  { pane, onRename, onChangeNotesPath, externalAppend, onPasteToTerminal, headerExtras },
+  {
+    pane,
+    onRename,
+    onChangeNotesPath,
+    externalAppend,
+    onPasteToTerminal,
+    headerExtras,
+    onClose,
+    onNew
+  },
   ref
 ): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -40,6 +58,11 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
   const dirtyRef = useRef<boolean>(false)
   const paneRef = useRef(pane)
   paneRef.current = pane
+  // Last externalAppend.seq actually applied. Parent re-renders (git poll,
+  // focus, layout, config saves) recreate the externalAppend object literal
+  // even when no new paste happened; without this guard the append effect
+  // would replay the same text on every re-render.
+  const lastAppliedAppendSeqRef = useRef<number | null>(null)
 
   function markDirty(v: boolean): void {
     dirtyRef.current = v
@@ -68,8 +91,30 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
 
   async function doSave(): Promise<{ ok: boolean; error?: string }> {
     const target = paneRef.current.filePath
-    if (!target) return { ok: false, error: 'no file to save' }
-    return writeTo(target)
+    if (target) return writeTo(target)
+    // Untitled buffer: route to Save As if the caller supports it. This is
+    // also what the dirty-quit / dirty-replace prompt's "Save" branch ends up
+    // calling, so picking Save on an untitled Notes buffer opens the picker
+    // instead of failing the prompt.
+    if (onChangeNotesPath) return doSaveAs()
+    return { ok: false, error: 'no file to save' }
+  }
+
+  async function doSaveAs(): Promise<{ ok: boolean; error?: string }> {
+    if (!onChangeNotesPath) return { ok: false, error: 'save-as not available' }
+    const current = paneRef.current.filePath || undefined
+    const picked = await window.api.dialog.pickSavePath({
+      title: 'Save notes as…',
+      defaultPath: current
+    })
+    if (!picked) return { ok: false, error: 'cancelled' }
+    const r = await writeTo(picked)
+    if (!r.ok) return r
+    // Notify the wrapper after a successful write so its document-path state
+    // and config.notesPath both update; the file-load effect then re-reads
+    // `picked` and finds matching content (no-op dispatch).
+    onChangeNotesPath(picked)
+    return { ok: true }
   }
 
   function getSelectionText(): string {
@@ -94,22 +139,6 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     path: () => paneRef.current.filePath,
     displayName: () => paneRef.current.name
   }))
-
-  async function handleChangeNotesPath(): Promise<void> {
-    if (!onChangeNotesPath) return
-    const current = paneRef.current.filePath || undefined
-    const picked = await window.api.dialog.pickSavePath({
-      title: 'Choose notes save location',
-      defaultPath: current
-    })
-    if (!picked) return
-    // Write current buffer to the chosen path so switching persists content.
-    // The parent then updates config.notesPath, the file-load effect reloads
-    // from the new path (same content we just wrote), and dirty clears.
-    const r = await writeTo(picked)
-    if (!r.ok) return
-    onChangeNotesPath(picked)
-  }
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -153,10 +182,16 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     if (!view) return
     const target = pane.filePath
     if (!target) {
-      if (!pane.isNotes && loadedPath !== null) {
+      // Going from a loaded path to no path means the document was closed
+      // (or Notes hit New). Clear the buffer so the editor reflects the
+      // untitled state instead of stranding the previous file's contents.
+      // Owners run the dirty prompt before getting here, so it's safe to drop
+      // the buffer unconditionally.
+      if (loadedPath !== null) {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } })
         markDirty(false)
         setLoadedPath(null)
+        setStatus('')
       }
       return
     }
@@ -176,24 +211,37 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
       .catch((err: unknown) => {
         setStatus(err instanceof Error ? err.message : String(err))
       })
-  }, [pane.filePath, pane.isNotes, loadedPath])
+  }, [pane.filePath, loadedPath])
 
+  // Append from terminal selection. Depend on the scalar seq (not the parent's
+  // object literal) and skip when the seq has already been applied, so unrelated
+  // re-renders cannot replay the previous paste.
+  const appendSeq = externalAppend?.seq ?? null
+  const appendText = externalAppend?.text ?? ''
   useEffect(() => {
     const view = viewRef.current
-    if (!view || !externalAppend) return
-    const text = externalAppend.text
-    if (!text) return
-    const insert = (view.state.doc.length > 0 ? '\n' : '') + text + '\n'
+    if (!view || appendSeq === null || !appendText) return
+    if (lastAppliedAppendSeqRef.current === appendSeq) return
+    lastAppliedAppendSeqRef.current = appendSeq
+    const insert = (view.state.doc.length > 0 ? '\n' : '') + appendText + '\n'
     view.dispatch({
       changes: { from: view.state.doc.length, insert },
       selection: { anchor: view.state.doc.length + insert.length },
       scrollIntoView: true
     })
     markDirty(true)
-  }, [externalAppend])
+  }, [appendSeq, appendText])
 
-  const displayPath = pane.filePath || (pane.isNotes ? '(notes)' : '(no file)')
-  const canSave = dirty && !!pane.filePath
+  const displayPath =
+    pane.filePath || (pane.isNotes ? '(untitled notes)' : '(no file)')
+  // For Notes, Save remains enabled when dirty even without a path because
+  // it routes through Save As. Plain editors stay disabled until a path is set.
+  const canSave = dirty && (!!pane.filePath || !!onChangeNotesPath)
+  const saveTitle = pane.filePath
+    ? 'Save (Ctrl/Cmd+S)'
+    : onChangeNotesPath
+      ? 'Save As… (Ctrl/Cmd+S)'
+      : 'No file to save'
 
   return (
     <div className="pane">
@@ -244,21 +292,37 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
               </button>
             </>
           )}
-          {pane.isNotes && onChangeNotesPath && (
+          {onNew && (
             <button
-              onClick={() => void handleChangeNotesPath()}
-              title="Choose a different file/location for saving notes"
+              onClick={() => void onNew()}
+              title="Start a new notes document"
             >
-              Notes path…
+              New
+            </button>
+          )}
+          {onChangeNotesPath && (
+            <button
+              onClick={() => void doSaveAs()}
+              title="Save the current notes buffer to a chosen file"
+            >
+              Save As…
             </button>
           )}
           <button
             onClick={() => void doSave()}
             disabled={!canSave}
-            title={pane.filePath ? 'Save (Ctrl/Cmd+S)' : 'No file to save'}
+            title={saveTitle}
           >
             Save
           </button>
+          {onClose && (
+            <button
+              onClick={() => onClose()}
+              title="Close the document (prompts if there are unsaved changes)"
+            >
+              Close
+            </button>
+          )}
         </div>
       </div>
       <div className="pane-body">

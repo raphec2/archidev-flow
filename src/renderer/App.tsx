@@ -47,6 +47,11 @@ export default function App(): JSX.Element {
 
   const editorRefs = useRef<Map<string, EditorPaneHandle | null>>(new Map())
   const editorRefCbs = useRef<Map<string, (h: EditorPaneHandle | null) => void>>(new Map())
+  // Monotonic seq for terminal-to-editor paste events. Date.now() can repeat
+  // within the same millisecond on rapid clicks; EditorPane uses this seq to
+  // decide whether an externalAppend is new, so collisions would silently drop
+  // the second paste.
+  const editorAppendSeqRef = useRef<number>(0)
 
   // Explorer panels stay mounted across visibility changes so the sibling
   // terminal Panel is never unregistered from react-resizable-panels (which
@@ -213,7 +218,8 @@ export default function App(): JSX.Element {
     const editors = config.editors
     const target = position === 'left' ? editors[0] : editors[editors.length - 1]
     if (!target) return
-    setEditorAppend({ seq: Date.now(), paneId: target.id, text })
+    editorAppendSeqRef.current += 1
+    setEditorAppend({ seq: editorAppendSeqRef.current, paneId: target.id, text })
   }
 
   const developerEditor = config.editors.find((e) => e.id === 'file')
@@ -228,6 +234,13 @@ export default function App(): JSX.Element {
     const target = consultantEditor ? 'consultantFile' : 'file'
     if (!(await promptDirtyBeforeAction(target, 'open the new file'))) return
     setEditorPane(target, { filePath: path })
+  }
+  // Close-document handler for the left/right file editors. Clearing filePath
+  // makes EditorPane's file-load effect blank the buffer; the dirty prompt
+  // owns the save/discard decision so this stays a single linear path.
+  async function closeEditorDocument(paneId: string): Promise<void> {
+    if (!(await promptDirtyBeforeAction(paneId, 'close the document'))) return
+    setEditorPane(paneId, { filePath: null })
   }
   async function toggleConsultantExplorer(): Promise<void> {
     if (!config) return
@@ -428,6 +441,7 @@ export default function App(): JSX.Element {
               promptDirtyForPane={promptDirtyBeforeAction}
               openFileInLeft={openFileInConsultantPane}
               openFileInRight={openFileInDeveloperPane}
+              closeEditorDocument={closeEditorDocument}
             />
           </Panel>
         </PanelGroup>
@@ -540,7 +554,8 @@ function BottomEditors({
   hasLeftEditor,
   promptDirtyForPane,
   openFileInLeft,
-  openFileInRight
+  openFileInRight,
+  closeEditorDocument
 }: {
   panes: EditorPaneData[]
   initialSizes: number[]
@@ -554,6 +569,7 @@ function BottomEditors({
   promptDirtyForPane: (paneId: string, action: string) => Promise<boolean>
   openFileInLeft: (path: string) => Promise<void>
   openFileInRight: (path: string) => Promise<void>
+  closeEditorDocument: (paneId: string) => Promise<void>
 }): JSX.Element {
   const setEditorPane = useStore((s) => s.setEditorPane)
   const config = useStore((s) => s.config)!
@@ -589,7 +605,7 @@ function BottomEditors({
                 externalAppend={externalAppend}
                 onPasteToTerminal={onPasteToTerminal}
                 hasLeftEditor={hasLeftEditor}
-                promptNotesDirty={() => promptDirtyForPane(pane.id, 'switch to Files mode')}
+                promptNotesDirty={(action) => promptDirtyForPane(pane.id, action)}
                 openLeft={openFileInLeft}
                 openRight={openFileInRight}
               />
@@ -600,6 +616,7 @@ function BottomEditors({
                 onRename={(name) => setEditorPane(pane.id, { name })}
                 externalAppend={externalAppend}
                 onPasteToTerminal={onPasteToTerminal}
+                onClose={() => void closeEditorDocument(pane.id)}
               />
             )}
           </PaneWithHandle>
@@ -669,7 +686,7 @@ function NotesOrFiles({
   externalAppend: { seq: number; text: string } | null
   onPasteToTerminal: (target: 'consultant' | 'developer', text: string) => void
   hasLeftEditor: boolean
-  promptNotesDirty: () => Promise<boolean>
+  promptNotesDirty: (action: string) => Promise<boolean>
   openLeft: (path: string) => Promise<void>
   openRight: (path: string) => Promise<void>
 }): JSX.Element {
@@ -679,15 +696,29 @@ function NotesOrFiles({
   // it via the effect below so the picker doesn't strand the user in an
   // unrelated directory after a project change.
   const [browseRoot, setBrowseRoot] = useState<string>(projectRoot)
+  // Wrapper-local notes document state. Initialized from config.notesPath but
+  // diverges intentionally on New/Close so the user can have an untitled
+  // session-local Notes buffer without overwriting the persisted default.
+  // Save As re-syncs both this and config.notesPath after a successful write.
+  // Empty string is the untitled sentinel (kept as `string` to stay aligned
+  // with the existing config.notesPath shape).
+  const [notesDocumentPath, setNotesDocumentPath] = useState<string>(notesPath)
 
   useEffect(() => {
     setBrowseRoot(projectRoot)
     setSelectedFile(null)
   }, [projectRoot])
 
+  // External notesPath changes (workspace switch, migration, manual config
+  // edit) should refresh the local document path. Within-session New/Close
+  // intentionally leaves config alone, so this effect does not fight them.
+  useEffect(() => {
+    setNotesDocumentPath(notesPath)
+  }, [notesPath])
+
   async function switchTo(next: 'notes' | 'files'): Promise<void> {
     if (next === mode) return
-    if (next === 'files' && !(await promptNotesDirty())) return
+    if (next === 'files' && !(await promptNotesDirty('switch to Files mode'))) return
     setMode(next)
   }
 
@@ -697,6 +728,24 @@ function NotesOrFiles({
     if (selectedFile && !isUnderDir(selectedFile, next)) {
       setSelectedFile(null)
     }
+  }
+
+  async function handleNotesNew(): Promise<void> {
+    if (!(await promptNotesDirty('start a new notes document'))) return
+    setNotesDocumentPath('')
+  }
+
+  async function handleNotesClose(): Promise<void> {
+    if (!(await promptNotesDirty('close the notes document'))) return
+    setNotesDocumentPath('')
+  }
+
+  function handleNotesPathSavedAs(newPath: string): void {
+    setNotesDocumentPath(newPath)
+    // Persist as the workspace's default notes path only after a successful
+    // Save As, never on New/Close. EditorPane only calls this prop after the
+    // write resolves, so there's no risk of pointing config at a missing file.
+    onChangeNotesPath(newPath)
   }
 
   const toggle = (
@@ -725,15 +774,21 @@ function NotesOrFiles({
   )
 
   if (mode === 'notes') {
+    // Untitled state is represented by filePath === null so EditorPane's
+    // file-load effect blanks the buffer; an empty string in
+    // notesDocumentPath means "no path" here.
+    const effectiveNotesPath = notesDocumentPath || null
     return (
       <EditorPane
         ref={registerEditor}
-        pane={{ ...pane, filePath: notesPath }}
+        pane={{ ...pane, filePath: effectiveNotesPath }}
         onRename={onRename}
-        onChangeNotesPath={onChangeNotesPath}
+        onChangeNotesPath={handleNotesPathSavedAs}
         externalAppend={externalAppend}
         onPasteToTerminal={onPasteToTerminal}
         headerExtras={toggle}
+        onNew={handleNotesNew}
+        onClose={handleNotesClose}
       />
     )
   }
