@@ -47,9 +47,20 @@ type Props = {
   // so wrappers (e.g. the bottom-center Notes/Files toggle) can extend the
   // header without nesting a second pane chrome.
   headerExtras?: ReactNode
+  // Fired when refresh clears the internal `selected` because the path no
+  // longer exists in the refreshed listing. Carries the cleared path so the
+  // parent can decide whether to clear its own mirror of the selection (e.g.
+  // NotesOrFiles' selectedFile that drives Open Left/Open Right).
+  onSelectionCleared?: (path: string) => void
 }
 
-export function FileTree({ root, label, onOpenFile, headerExtras }: Props): JSX.Element {
+export function FileTree({
+  root,
+  label,
+  onOpenFile,
+  headerExtras,
+  onSelectionCleared
+}: Props): JSX.Element {
   const [tree, setTree] = useState<Node[]>([])
   const [selected, setSelected] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -69,6 +80,82 @@ export function FileTree({ root, label, onOpenFile, headerExtras }: Props): JSX.
   useEffect(() => {
     loadRoot()
   }, [loadRoot])
+
+  // Manual refresh that preserves currently-visible expansion and the active
+  // selection. We snapshot expanded directory paths from the live tree, reload
+  // the root, then re-list each expanded path that still exists. Anything that
+  // disappeared (renamed, deleted, ancestor removed) silently drops out, and a
+  // selection whose path no longer appears is cleared. Collapsed-but-loaded
+  // children are intentionally NOT preserved — refresh should always show fresh
+  // data when a branch is reopened.
+  const refresh = useCallback(async (): Promise<void> => {
+    setError('')
+    const expandedPaths = new Set<string>()
+    const collect = (nodes: Node[]): void => {
+      for (const n of nodes) {
+        if (n.isDir && n.expanded) {
+          expandedPaths.add(n.path)
+          if (n.children) collect(n.children)
+        }
+      }
+    }
+    collect(tree)
+
+    let rootEntries: DirEntry[]
+    try {
+      rootEntries = await window.api.fs.list(root)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
+      setTree([])
+      if (selected) {
+        const prev = selected
+        setSelected('')
+        if (onSelectionCleared) onSelectionCleared(prev)
+      }
+      return
+    }
+
+    const rehydrate = async (entries: DirEntry[]): Promise<Node[]> => {
+      const out: Node[] = []
+      for (const e of entries) {
+        if (e.isDir && expandedPaths.has(e.path)) {
+          let children: DirEntry[] = []
+          try {
+            children = await window.api.fs.list(e.path)
+          } catch {
+            children = []
+          }
+          out.push({
+            ...e,
+            expanded: true,
+            loaded: true,
+            children: await rehydrate(children)
+          })
+        } else {
+          out.push({ ...e })
+        }
+      }
+      return out
+    }
+
+    const newTree = await rehydrate(rootEntries)
+    setTree(newTree)
+
+    if (selected) {
+      const exists = (nodes: Node[]): boolean => {
+        for (const n of nodes) {
+          if (n.path === selected) return true
+          if (n.children && exists(n.children)) return true
+        }
+        return false
+      }
+      if (!exists(newTree)) {
+        const prev = selected
+        setSelected('')
+        if (onSelectionCleared) onSelectionCleared(prev)
+      }
+    }
+  }, [root, tree, selected, onSelectionCleared])
 
   async function toggle(pathToToggle: string): Promise<void> {
     const visit = async (nodes: Node[]): Promise<Node[]> => {
@@ -160,7 +247,7 @@ export function FileTree({ root, label, onOpenFile, headerExtras }: Props): JSX.
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
-          <button onClick={loadRoot} title="Refresh">↻</button>
+          <button onClick={refresh} title="Refresh (preserves expansion and selection)">↻</button>
         </div>
       </div>
       <div className="tree" tabIndex={0}>

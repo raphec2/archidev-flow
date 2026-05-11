@@ -815,6 +815,14 @@ function NotesOrFiles({
       root={browseRoot}
       label="Files"
       onOpenFile={setSelectedFile}
+      onSelectionCleared={(path) => {
+        // Wrapper-side selectedFile drives Open Left/Open Right; if FileTree
+        // dropped this exact path during refresh because it no longer exists,
+        // the open buttons must lose their target too. A different cleared
+        // path (e.g. a directory selected after the file) leaves selectedFile
+        // alone — it might still be valid.
+        if (selectedFile === path) setSelectedFile(null)
+      }}
       headerExtras={
         <>
           {toggle}
